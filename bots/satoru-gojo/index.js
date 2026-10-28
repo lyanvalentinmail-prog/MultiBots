@@ -2,12 +2,12 @@ const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
-  Browsers,
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const readline = require('readline');
 const pino = require('pino');
+const fs = require('fs');
 const config = require('./config');
 const { handleMessage } = require('./message-handler');
 const { getGroup, save } = require('./lib/database');
@@ -19,26 +19,29 @@ const rl = readline.createInterface({
 });
 
 function ask(question) {
-  return new Promise(resolve => rl.question(question, answer => resolve(answer.trim())));
+  return new Promise(resolve => {
+    rl.question(question, answer => resolve((answer || '').trim()));
+  });
 }
 
 /**
  * Solicita el pairing code y lo muestra formateado.
- * Importante: Baileys requiere el número SÓLO con dígitos, código de país incluido, SIN '+' ni espacios.
- * Ejemplos válidos: "59896719709", "5491112345678", "34612345678"
+ * Baileys requiere el número SÓLO con dígitos, código de país incluido, SIN '+' ni espacios.
+ * Ejemplos válidos: "59896719709", "5491112345678", "34612345678", "5215512345678"
  */
 async function requestAndShowCode(sock, phoneDigits) {
-  const maxRetries = 3;
+  const maxRetries = 5;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`\n🔑 Solicitando código de pairing (intento ${attempt}/${maxRetries})...`);
+      console.log(`\n🔑 Solicitando código (intento ${attempt}/${maxRetries})...`);
+      // Baileys pide el número sin '+'
       const code = await sock.requestPairingCode(phoneDigits);
       if (code) {
-        const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const clean = String(code).toUpperCase().replace(/[^A-Z0-9]/g, '');
         const pretty = clean.match(/.{1,4}/g)?.join('-') || clean;
         console.log('\n═══════════════════════════════════════════════');
         console.log('  ✅  Tu código de pairing es:');
-        console.log(`           ${pretty}`);
+        console.log(`               ${pretty}`);
         console.log('');
         console.log('  1) Abre WhatsApp en tu teléfono');
         console.log('  2) Toca ⋮ → Dispositivos vinculados');
@@ -49,113 +52,124 @@ async function requestAndShowCode(sock, phoneDigits) {
         return true;
       }
     } catch (err) {
-      console.error(`❌ Error solicitando pairing code (intento ${attempt}):`, err?.message || err);
+      console.error(`❌ Error (intento ${attempt}):`, err?.message || err);
       if (attempt < maxRetries) {
         console.log('⏳ Reintentando en 3 segundos...');
         await new Promise(r => setTimeout(r, 3000));
       }
     }
   }
-  console.log('\n❌ No se pudo obtener el pairing code tras varios intentos.');
-  console.log('   Reinicia el bot con "npm run satoru" y vuelve a intentarlo.');
-  console.log('   Si sigue fallando, prueba el método QR (opción 2).\n');
+  console.log('\n❌ No se pudo obtener el código. Reinicia con `npm run satoru`.');
+  console.log('   Prueba el método QR (opción 2) si el problema persiste.\n');
   return false;
 }
 
+async function promptAuthMethod() {
+  console.log('\n╔══════════════════════════════════════════╗');
+  console.log(`║   ${config.name} v${config.version}`.padEnd(42) + '║');
+  console.log('╚══════════════════════════════════════════╝\n');
+  console.log('Elige el método de inicio de sesión:');
+  console.log('');
+  console.log('  1) 🔢 Pairing code  (RECOMENDADO para Termux)');
+  console.log('       Introduces tu número y tecleas el código en WhatsApp');
+  console.log('');
+  console.log('  2) 📷 Código QR');
+  console.log('       Muestra un QR para escanear con la cámara');
+  console.log('');
+
+  let choice = await ask('Opción [1/2]: ');
+  while (!['1', '2'].includes(choice)) {
+    choice = await ask('Por favor escribe 1 o 2: ');
+  }
+
+  if (choice === '2') {
+    return { method: 'qr', phone: null };
+  }
+
+  console.log('');
+  console.log('Introduce tu número de WhatsApp con código de país,');
+  console.log('SIN el signo +, SIN espacios ni guiones.');
+  console.log('Ejemplos:');
+  console.log('  Uruguay:   59896719709');
+  console.log('  Argentina: 5491112345678');
+  console.log('  México:    5215512345678');
+  console.log('  España:    34612345678');
+  console.log('');
+
+  let raw = await ask('Número: ');
+  let digits = raw.replace(/\D/g, '');
+
+  // Si el usuario escribió con '+' al principio, lo quitamos (ya lo hace replace)
+  // Si el número empieza con 0 (formato local) pedimos que lo quite
+  while (digits.length < 6 || digits.length > 15) {
+    console.log(`\n❌ Leí "${digits}" (${digits.length} dígitos). No parece válido.`);
+    console.log('Debe ser sólo dígitos con código de país, sin + ni espacios.');
+    raw = await ask('Número: ');
+    digits = raw.replace(/\D/g, '');
+  }
+
+  console.log(`\n✅ Número: +${digits}`);
+  return { method: 'pairing', phone: digits };
+}
+
 async function connectToWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState(config.sessionPath);
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`🔌 Usando Baileys v${version.join('.')} (latest: ${isLatest})`);
+  const AUTH_DIR = config.sessionPath;
+
+  // Detectar si ya hay sesión guardada ANTES de crear el socket
+  const hasSession = fs.existsSync(AUTH_DIR) && fs.readdirSync(AUTH_DIR).length > 0;
+
+  let authMethod = 'qr';
+  let phoneNumberDigits = null;
+
+  if (!hasSession) {
+    const auth = await promptAuthMethod();
+    authMethod = auth.method;
+    phoneNumberDigits = auth.phone;
+    console.log('⏳ Iniciando conexión con WhatsApp...\n');
+  } else {
+    console.log('🔓 Sesión guardada detectada, conectando...');
+  }
+
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version } = await fetchLatestBaileysVersion();
+  console.log(`🔌 Baileys v${version.join('.')}`);
 
   const sock = makeWASocket({
     version,
     auth: state,
     printQRInTerminal: false,
     logger: pino({ level: 'silent' }),
-    // Usa un browser UA real para que el pairing funcione (WhatsApp valida UA)
-    browser: ['Satoru Gojo', 'Chrome', '120.0.0.0'],
+    // UA real para que no bloqueen
+    browser: ['Chrome (Linux)', 'Chrome', '120.0.0.0'],
     syncFullHistory: false,
-    markOnlineOnConnect: true,
-    // No generar QR automáticamente (lo controlamos nosotros)
-    generateHighQualityLinkPreview: false
+    markOnlineOnConnect: true
   });
-
-  // Decidir método de autenticación
-  const isFirstRun = !state.creds.me;
-  let authMethod = null;
-  let phoneNumberDigits = null; // SOLO dígitos, sin '+'
-
-  if (isFirstRun) {
-    console.log('\n╔══════════════════════════════════════════╗');
-    console.log(`║   ${config.name} v${config.version}`.padEnd(42) + '║');
-    console.log('╚══════════════════════════════════════════╝\n');
-    console.log('No hay sesión previa. Elige el método de inicio:');
-    console.log('');
-    console.log('  1) 🔢 Pairing code  (RECOMENDADO para Termux)');
-    console.log('       Introduces tu número y tecleas un código de 8 caracteres en WhatsApp');
-    console.log('');
-    console.log('  2) 📷 Código QR');
-    console.log('       Muestra un QR para escanear con la cámara de WhatsApp');
-    console.log('');
-    const choice = await ask('Opción [1/2]: ');
-
-    if (choice === '2') {
-      authMethod = 'qr';
-      console.log('\n📷 Modo QR activado. Escanea el QR cuando aparezca:\n');
-    } else {
-      authMethod = 'pairing';
-      console.log('');
-      const raw = await ask('📱 Tu número (con código de país, sin +, ej: 59896719709): ');
-      phoneNumberDigits = raw.replace(/\D/g, '');
-      if (phoneNumberDigits.length < 8) {
-        console.error('❌ Número inválido. Debe incluir código de país. Ej: 59896719709');
-        process.exit(1);
-      }
-      console.log(`✅ Número registrado: +${phoneNumberDigits}`);
-      console.log('⏳ Esperando a que WhatsApp esté listo para solicitar el código...');
-    }
-  } else {
-    console.log('🔓 Sesión guardada detectada, conectando...');
-  }
 
   let pairingRequested = false;
   let qrShown = false;
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr, isNewLogin } = update;
+    const { connection, lastDisconnect, qr } = update;
 
     // === PAIRING CODE ===
-    // El momento correcto para solicitar el pairing code es cuando WhatsApp emite
-    // un QR (significa que está esperando un dispositivo vinculado). Pedimos el
-    // código INSTEAD de mostrar el QR. También cubrimos el caso de "isNewLogin"
-    // que dispara en algunas versiones.
-    if (authMethod === 'pairing' && phoneNumberDigits && !pairingRequested && (qr || isNewLogin || connection === 'connecting')) {
-      // Solo pedimos cuando realmente hay QR disponible (momento exacto del handshake)
-      if (qr) {
-        pairingRequested = true;
-        await requestAndShowCode(sock, phoneNumberDigits);
-      }
-    }
-
-    // Fallback de seguridad: si pasaron 10 segundos desde que conectamos y no
-    // se pidió el código, intentamos pedirlo
-    if (authMethod === 'pairing' && phoneNumberDigits && !pairingRequested && connection !== 'open') {
-      setTimeout(async () => {
-        if (!pairingRequested && sock.user === undefined) {
-          pairingRequested = true;
-          await requestAndShowCode(sock, phoneNumberDigits);
-        }
-      }, 10000);
+    // Pedimos el código en el PRIMER evento QR (momento en que WhatsApp
+    // está esperando la vinculación). Si lo pedimos antes o después, falla.
+    if (authMethod === 'pairing' && phoneNumberDigits && qr && !pairingRequested) {
+      pairingRequested = true;
+      await requestAndShowCode(sock, phoneNumberDigits);
     }
 
     // === QR ===
     if (qr && authMethod === 'qr') {
+      if (!qrShown) {
+        console.log('\n📷 Escanea este código QR con tu WhatsApp:\n');
+      }
       qrcode.generate(qr, { small: true });
-      console.log('(Si el QR expira o no aparece, reinicia con Ctrl+C y vuelve a correr `npm run satoru`)');
       qrShown = true;
+      console.log('(Si el QR expira, espera al nuevo)');
     }
 
-    // === CONEXIÓN EXITOSA ===
+    // === CONECTADO ===
     if (connection === 'open') {
       const me = sock.user;
       const tag = me.id.split(':')[0];
@@ -165,32 +179,33 @@ async function connectToWhatsApp() {
       console.log('═══════════════════════════════════════════════\n');
     }
 
-    // === RECONEXIÓN / DESCONEXIÓN ===
+    // === DESCONEXIÓN ===
     if (connection === 'close') {
-      const reason = lastDisconnect?.error?.output?.statusCode;
-      const reasonName = lastDisconnect?.error?.output?.payload?.error || reason;
-      const loggedOut = reason === DisconnectReason.loggedOut || reason === 401;
-      const restartRequired = reason === DisconnectReason.restartRequired;
-      console.log(`\n⚠️  Desconectado. Razón: ${reasonName || reason || 'desconocida'}`);
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const errMsg = lastDisconnect?.error?.output?.payload?.error || lastDisconnect?.error?.message || statusCode;
+      const loggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+      const restart = statusCode === DisconnectReason.restartRequired;
+
+      console.log(`\n⚠️  Desconectado (${errMsg})`);
+
       if (loggedOut) {
-        console.log('❌ Sesión cerrada (logged out).');
-        console.log('   Borra la carpeta `bots/satoru-gojo/auth` y reinicia el bot.');
+        console.log('❌ Sesión cerrada. Borra la carpeta `bots/satoru-gojo/auth` y reinicia.');
         process.exit(1);
       }
-      if (restartRequired) {
-        console.log('🔄 Reinicio requerido por WhatsApp. Reconectando en 3s...');
+      if (restart) {
+        console.log('🔄 Reinicio requerido, reconectando en 3s...');
         setTimeout(connectToWhatsApp, 3000);
         return;
       }
       console.log('🔄 Reconectando...');
-      pairingRequested = false; // permitir volver a pedir código si hace falta
+      pairingRequested = false;
       setTimeout(connectToWhatsApp, 2000);
     }
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  // Evento: bienvenida al entrar a grupo
+  // Bienvenida
   sock.ev.on('group-participants.update', async (update) => {
     const { id, participants, action } = update;
     try {
@@ -203,10 +218,10 @@ async function connectToWhatsApp() {
           });
         }
       }
-    } catch (e) { console.error('welcome error:', e.message); }
+    } catch (e) { console.error('welcome:', e.message); }
   });
 
-  // Evento: anti-delete
+  // Anti-delete
   sock.ev.on('messages.update', async (updates) => {
     for (const u of updates) {
       try {
@@ -227,7 +242,7 @@ async function connectToWhatsApp() {
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
     if (!msg?.key) return;
-    try { await handleMessage(sock, msg); } catch (e) { console.error('msg error:', e.message); }
+    try { await handleMessage(sock, msg); } catch (e) { console.error('msg:', e.message); }
   });
 }
 
