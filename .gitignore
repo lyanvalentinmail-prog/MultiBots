@@ -1,0 +1,7 @@
+node_modules/
+bots/*/auth/
+bots/*/auth*/
+*.log
+.DS_Store
+npm-debug.log*
+.env
