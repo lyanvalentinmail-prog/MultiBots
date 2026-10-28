@@ -10,7 +10,9 @@ const readline = require('readline');
 const pino = require('pino');
 const path = require('path');
 const config = require('./config');
-const { handleMessage } = require('./message-handler');
+const { handleMessage, buildFullMenuText, buildFastCommandText } = require('./message-handler');
+const { getGroup, save, db } = require('./lib/database');
+const { isGroup } = require('./lib/helpers');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -109,6 +111,44 @@ async function connectToWhatsApp() {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // Evento: bienvenida al entrar a grupo
+  sock.ev.on('group-participants.update', async (update) => {
+    const { id, participants, action } = update;
+    const g = getGroup(id);
+    if (g.welcome && (action === 'add')) {
+      for (const p of participants) {
+        await sock.sendMessage(id, {
+          text: `👋 ¡Bienvenido/a @${p.split('@')[0]} al grupo!\nSoy *${config.name}*, escribe "menu" para ver lo que puedo hacer.`,
+          mentions: [p]
+        });
+      }
+    }
+    if (action === 'remove') {
+      for (const p of participants) {
+        // anti-delete u otros: no hacer nada en salida
+      }
+    }
+  });
+
+  // Evento: anti-delete (re-envía mensajes eliminados)
+  sock.ev.on('messages.update', async (updates) => {
+    for (const u of updates) {
+      try {
+        const jid = u.key.remoteJid;
+        if (!isGroup(jid)) continue;
+        const g = getGroup(jid);
+        if (!g.antidelete) continue;
+        if (u.update?.message === null || u.update?.status === 3) {
+          // Notificación de borrado - no podemos recuperar el contenido sin guardar mensajes, pero lo anunciamos
+          await sock.sendMessage(jid, {
+            text: `🚫 @${u.key.participant?.split('@')[0] || u.key.remoteJid?.split('@')[0]} borró un mensaje.`,
+            mentions: u.key.participant ? [u.key.participant] : []
+          });
+        }
+      } catch {}
+    }
+  });
 
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];

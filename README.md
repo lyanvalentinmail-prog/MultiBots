@@ -89,12 +89,36 @@ MultiBots/
             └── menu.html    # Plantilla HTML de referencia del menú
 ```
 
+## Funcionalidades activas (189 comandos en 17 categorías)
+
+- ✅ **General**: ping, id, infobot, menu, owner, estadoapi
+- ✅ **Owners**: mod, delsession, join, bot on/off, setlen, setmenu
+- ✅ **Admins de grupo**: ban, sban, warn/delwarn (3 strikes → ban), mute/delmute, open/close, fijar/desfijar, namegp, desgp, photogp, grupo on/off, soloadmin, welcome
+- ✅ **Antis**: antilink, antiimg, antiaudio, antivideo, antisticker, antispam, antibot, antidocs, antipalabras con lista personalizable + auto-eliminación + advertencia
+- ✅ **Anti-delete**: anuncia cuando alguien borra un mensaje en el grupo
+- ✅ **Bienvenida** automática al entrar al grupo
+- ✅ **Sub-bots**: qr, code, bots, bot info, setbotname, setbotimg, autoread
+- ✅ **RPG/Economía**: balance, coins, transfer, dado, daily, adivinanza, pescar, miner, work, suerte, crimen, cazar, cofre, ppt, banco, deposit, robar, sorpresa, w/rw, claim, tiendag, comprarg, préstamos
+- ✅ **Pokémon**: catch (captura aleatoria), pokedex (Velirius API), pokemonbattle
+- ✅ **Perfil**: perfil, setbirth/age/desc/fav/genre, birthdays, marry/divorce
+- ✅ **Tops**: topcoins, topinactivos, topactivos
+- ✅ **Búsquedas**: google, pinterestbuscar, tiktokbuscar, wiki (Wikipedia ES), youtube
+- ✅ **Descargas**: facebook, instagram, letra, mp3, mp4, play, tiktok, tiktokaudio, pinterest (todos vía Velirius API)
+- ✅ **Reacciones**: 26 reacciones anime (abrazar, besar, golpear, bailar, llorar, reir, etc.) + reacción aleatoria
+- ✅ **Adicionales**: nota/delnota, infogrupo, reveal, translate, calculator, tts (Google TTS), stt
+- ✅ **Stickers**: .sticker (imagen/video → sticker), s (atajo), brat, bratv (video), bratestirado, attp, ttp, bobesponja/bratcoyote/bratanime/bratpinguino/bratboy, pack, toimg, tovid
+- ✅ **Diversión**: ship, topgays, topotakus, topfemboys, meme (Reddit random)
+- ✅ **Canvas** (Velirius API): canvaimagen, cuentatiktok, friendship, gaycard, googleimg, iqc/iqcblue/iqcpink, laptop, messengerquote, pc, pov, profilenote, quotly, searched, storyreply, x (tweet)
+- ✅ **Filtros de imagen** (Velirius): blur, deepfry, gay, glitch, grayscale, invert, liquify, pixel, sketch, swirl
+
+Todas las funciones se almacenan en `database.json` (usuarios, grupos, monedas, notas, configuraciones) — no necesita base de datos externa.
+
 ## ¿Cómo agregar un nuevo comando?
 
 Cada archivo en `bots/<bot>/commands/` exporta un objeto con:
 - `title`: título de la categoría (se muestra en el menú)
 - `commands`: array de objetos con:
-  - `pattern`: nombre del comando (ej: `'hola <nombre>'`) o RegExp
+  - `pattern`: nombre del comando (ej: `'hola <nombre>'`). Soporta comandos multi-palabra como `'bot on'`
   - `desc`: descripción que aparece en el menú
   - `fast`: `true` para que aparezca en *Fast command*
   - `handler`: función async `(sock, jid, args, msg) => { ... }` con la lógica
@@ -108,7 +132,7 @@ module.exports = {
       pattern: 'hola',
       desc: 'Saluda al bot',
       fast: true,
-      handler: async (sock, jid, args, msg) => {
+      handler: async (sock, jid) => {
         await sock.sendMessage(jid, { text: '¡Hola! 👋 Soy Satoru Gojo.' });
       }
     }
@@ -116,6 +140,13 @@ module.exports = {
 };
 ```
 No necesitas importar nada más: el loader lo detecta automáticamente al reiniciar el bot.
+
+### Helpers disponibles
+En `bots/satoru-gojo/lib/`:
+- `database.js` — `getUser(jid)`, `getGroup(jid)`, `db`, `save()` para persistencia
+- `helpers.js` — `isOwner`, `isAdmin(sock,jid,participant)`, `isGroup`, `rand(min,max)`, `pick(array)`, `formatTime(ms)`
+- `media.js` — `downloadMsg(msg)`, `sendTextSticker(sock,jid,text,type)`, `sendImageAsSticker(...)`
+- `velirius.js` — cliente de la API Velirius: `request(endpoint,params)`, `getImage(endpoint,params)`, `getSticker(endpoint,params)`
 
 ---
 © MultiBots

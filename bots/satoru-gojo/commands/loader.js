@@ -1,10 +1,4 @@
 // Loader de comandos: carga automáticamente todos los archivos .js de esta carpeta
-// (excepto index.js) y los organiza por categoría.
-// Cada archivo debe exportar: { name, emoji, commands: [ { pattern, desc, fast, handler } ] }
-//   - pattern: string con el nombre del comando (sin prefijo) o RegExp
-//   - desc: descripción para el menú
-//   - fast: true/false para mostrar en "Fast command"
-//   - handler: async (sock, msg, args) => { ... }
 const fs = require('fs');
 const path = require('path');
 
@@ -13,7 +7,7 @@ const categories = [];
 const fastCommands = [];
 
 const files = fs.readdirSync(__dirname).filter(
-  f => f.endsWith('.js') && f !== 'index.js' && f !== 'loader.js'
+  f => f.endsWith('.js') && !['index.js', 'loader.js'].includes(f)
 );
 
 for (const file of files) {
@@ -21,7 +15,6 @@ for (const file of files) {
   const cat = {
     key: file.replace(/\.js$/, ''),
     title: mod.title,
-    emoji: mod.emoji || '✺',
     commands: []
   };
 
@@ -44,24 +37,37 @@ for (const file of files) {
 }
 
 /**
- * Busca un comando por texto (sin prefijo).
+ * Busca un comando por texto. Maneja comandos de varias palabras (ej "bot on", "bot off", "bot info",
+ * "antipalabra add", "grupo on", etc.) priorizando coincidencia más larga.
  */
 function findCommand(text, prefix = '.') {
-  const trimmed = text.trim();
-  // Soporte para con/sin prefijo
-  const normalized = trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
+  let normalized = text.trim();
+  if (normalized.startsWith(prefix)) normalized = normalized.slice(prefix.length);
   const lower = normalized.toLowerCase();
 
+  let best = null;
+  let bestLen = 0;
+  let bestArgs = '';
+
   for (const c of commands) {
-    if (typeof c.pattern === 'string') {
-      // Extraer el nombre base (antes del primer espacio o '<')
-      const base = c.pattern.split(/\s|</)[0].toLowerCase();
-      if (lower === base || lower.startsWith(base + ' ')) {
-        // args son lo que viene después del comando
-        const args = normalized.slice(base.length).trim();
-        return { command: c, args };
+    if (typeof c.pattern !== 'string') continue;
+    // Extraer la parte de "palabras base" (antes de '<' que indica argumento)
+    const baseRaw = c.pattern.split('<')[0].trim().toLowerCase();
+    // Coincidencia exacta de tokens: el texto debe comenzar con baseRaw
+    if (lower === baseRaw || lower.startsWith(baseRaw + ' ') || lower.startsWith(baseRaw)) {
+      if (baseRaw.length > bestLen) {
+        best = c;
+        bestLen = baseRaw.length;
+        bestArgs = normalized.slice(baseRaw.length).trim();
       }
-    } else if (c.pattern instanceof RegExp) {
+    }
+  }
+
+  if (best) return { command: best, args: bestArgs };
+
+  // Fallback regex
+  for (const c of commands) {
+    if (c.pattern instanceof RegExp) {
       const m = lower.match(c.pattern);
       if (m) return { command: c, args: normalized, match: m };
     }

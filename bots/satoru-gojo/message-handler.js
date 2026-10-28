@@ -2,6 +2,8 @@ const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const { categories, fastCommands, findCommand } = require('./commands');
+const { isAdmin, isGroup, getSender } = require('./lib/helpers');
+const { getGroup } = require('./lib/database');
 
 const SUPPORT_NUMBER = config.ownerNumber;
 
@@ -112,6 +114,46 @@ async function handleMessage(sock, msg) {
   try {
     if (!msg.message) return;
     if (msg.key.fromMe) return;
+
+    // Respetar "bot off" del owner (excepto "bot on")
+    const { db } = require('./lib/database');
+    const sender = msg.key.participant || msg.key.remoteJid;
+    const { isOwner } = require('./lib/helpers');
+    const testText = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim().toLowerCase();
+    if (!db.global.botOn && testText !== '.bot on' && !isOwner(sender)) return;
+    if (!db.global.botOn && testText === '.bot on' && !isOwner(sender)) return;
+
+    // === Antis (solo en grupos) ===
+    if (isGroup(jid) && !isOwner(sender)) {
+      const g = getGroup(jid);
+      const senderIsAdmin = await isAdmin(sock, jid, sender);
+      if (!senderIsAdmin && g) {
+        const m = msg.message;
+        const hasLink = /https?:\/\/|chat\.whatsapp\.com|wa\.me/i.test(testText);
+        const hasImg = !!(m?.imageMessage || m?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
+        const hasVideo = !!(m?.videoMessage || m?.extendedTextMessage?.contextInfo?.quotedMessage?.videoMessage);
+        const hasAudio = !!(m?.audioMessage);
+        const hasSticker = !!(m?.stickerMessage);
+        const hasDoc = !!(m?.documentMessage);
+        let reason = null;
+        if (g.antilink && hasLink) reason = 'enlaces prohibidos';
+        else if (g.antiimg && hasImg) reason = 'imágenes prohibidas';
+        else if (g.antivideo && hasVideo) reason = 'videos prohibidos';
+        else if (g.antiaudio && hasAudio) reason = 'audios prohibidos';
+        else if (g.antisticker && hasSticker) reason = 'stickers prohibidos';
+        else if (g.antidocs && hasDoc) reason = 'documentos prohibidos';
+        else if (g.antipalabras && g.antipalabrasList && g.antipalabrasList.some(w => testText.includes(w))) reason = 'palabra prohibida';
+        if (reason) {
+          try { await sock.sendMessage(jid, { delete: msg.key }); } catch {}
+          await sock.sendMessage(jid, { text: `⚠️ @${sender.split('@')[0]} ${reason} (eliminado).`, mentions: [sender] });
+          // Añadir warn
+          g.mutes = g.mutes || {};
+          g.mutes['w_' + sender] = (g.mutes['w_' + sender] || 0) + 1;
+          require('./lib/database').save();
+          return;
+        }
+      }
+    }
 
     const jid = getJid(msg);
     const extracted = extractText(msg);
