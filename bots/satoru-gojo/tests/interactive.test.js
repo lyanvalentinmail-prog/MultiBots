@@ -214,13 +214,14 @@ test('si el menú interactivo falla, cae al banner + texto con los 3 comandos', 
   assert.match(ctx.messages[1].content.text, /Ⓒ Satoru gojo/)
 })
 
-test('si además falla el banner, envía un único mensaje de texto completo', async () => {
+test('si además falla el banner, la tarjeta se compone igual con cabecera lisa', async () => {
   const ctx = menuContext({ config: { banner: './assets/no-existe.jpg', menu: { htmlEnabled: false } } })
   ctx.sock.relayMessage = async () => { throw new Error('interactive no soportado') }
   await deliverMenu(ctx)
-  assert.equal(ctx.messages.length, 1)
-  assert.match(ctx.messages[0].content.text, /\*Satoru gojo\*/)
-  assert.match(ctx.messages[0].content.text, /\.menufull — \*Menu\*/)
+  assert.equal(ctx.messages.length, 2, 'tarjeta con cabecera lisa + menú de texto')
+  assert.ok(Buffer.isBuffer(ctx.messages[0].content.image), 'la tarjeta no depende del banner')
+  assert.match(ctx.messages[0].content.caption, /\*Satoru gojo\*/)
+  assert.match(ctx.messages[1].content.text, /\.menufull — \*Menu\*/)
 })
 
 test('menuMode text no intenta botones y menuMode list conserva las categorías', async () => {

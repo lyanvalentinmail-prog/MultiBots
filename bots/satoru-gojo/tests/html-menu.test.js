@@ -91,6 +91,17 @@ test('el pushName del usuario se escapa dentro del HTML', async () => {
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/)
 })
 
+test('por defecto el menú NO manda el archivo HTML: aparece como tarjeta-imagen', async () => {
+  const ctx = htmlContext()
+  const relayed = []
+  ctx.sock.relayMessage = async (jid, message) => { relayed.push(message); return 'ID' }
+  ctx.sock.waUploadToServer = async () => ({ mediaUrl: 'https://example.invalid/m', directPath: '/m' })
+  ctx.sock.user = { id: CHAT, jid: CHAT }
+  await deliverMenu(ctx)
+  assert.equal(ctx.messages.length, 0, 'sin documentos adjuntos')
+  assert.equal(relayed.length, 1, 'el menú se ve en el chat como tarjeta con botones')
+})
+
 test('sendMenuHtml envía la tarjeta como documento text/html', async () => {
   const ctx = htmlContext()
   await sendMenuHtml(ctx)
@@ -105,20 +116,20 @@ test('sendMenuHtml envía la tarjeta como documento text/html', async () => {
   assert.equal(options.quoted, ctx.m.raw, 'responde al mensaje del usuario')
 })
 
-test('deliverMenu adjunta la tarjeta HTML detrás del menú', async () => {
-  const ctx = htmlContext()
+test('con htmlEnabled en true, deliverMenu adjunta el archivo HTML detrás del menú', async () => {
+  const ctx = htmlContext({ config: { menu: { htmlEnabled: true } } })
   const relayed = []
   ctx.sock.relayMessage = async (jid, message) => { relayed.push(message); return 'ID' }
   ctx.sock.waUploadToServer = async () => ({ mediaUrl: 'https://example.invalid/m', directPath: '/m' })
   ctx.sock.user = { id: CHAT, jid: CHAT }
   await deliverMenu(ctx)
   assert.equal(relayed.length, 1, 'primero el menú con sus botones')
-  assert.equal(ctx.messages.length, 1, 'después la tarjeta HTML')
+  assert.equal(ctx.messages.length, 1, 'después el archivo HTML (activado)')
   assert.equal(ctx.messages[0].content.mimetype, 'text/html')
 })
 
 test('si la plantilla HTML falta, el menú se entrega igual', async () => {
-  const ctx = htmlContext({ config: { menu: { htmlTemplate: './assets/no-existe.html' } } })
+  const ctx = htmlContext({ config: { menu: { htmlEnabled: true, htmlTemplate: './assets/no-existe.html' } } })
   const relayed = []
   ctx.sock.relayMessage = async (jid, message) => { relayed.push(message); return 'ID' }
   ctx.sock.waUploadToServer = async () => ({ mediaUrl: 'https://example.invalid/m', directPath: '/m' })

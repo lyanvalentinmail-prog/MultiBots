@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { menuHtmlFileName, renderMenuHtml } from './html.js'
+import { composeMenuCard } from './utils/card.js'
 import { isHttpUrl } from './utils/format.js'
 import { resolveBot } from './utils/paths.js'
 import {
@@ -117,13 +118,30 @@ export function buildMenuContent(ctx, style, caption, media) {
 }
 
 /**
- * Nuestro menú: banner + caption (título, saludo, "Selecciona el menu que
+ * La imagen del menú es la tarjeta compuesta (banner + textos + botones
+ * separados), así el menú "aparece" en el chat en vez de mandar un archivo.
+ * Si por lo que sea no se puede componer, se usa el banner de siempre.
+ */
+export async function menuCardMedia(ctx) {
+  const { config } = ctx
+  if (config.menu?.cardEnabled !== false) {
+    try {
+      return { image: await composeMenuCard(ctx), mimetype: 'image/jpeg' }
+    } catch (error) {
+      console.warn(`⚠ No se pudo componer la tarjeta: ${error.message}`)
+    }
+  }
+  return bannerMedia(config.banner)
+}
+
+/**
+ * Nuestro menú: tarjeta con el caption (título, saludo, "Selecciona el menu que
  * necesites", copyright) y los tres botones Menu / Fast command / Support.
  */
 async function sendOurMenu(ctx, withBanner = true) {
   const { sock, m, config } = ctx
   const caption = buildMenuHeader(ctx)
-  const media = withBanner ? await bannerMedia(config.banner) : {}
+  const media = withBanner ? await menuCardMedia(ctx) : {}
   const style = BUTTON_STYLES.includes(config.menu?.buttonStyle) ? config.menu.buttonStyle : 'native'
   const content = buildMenuContent(ctx, style, caption, media)
   return sendViaLia(sock, m.chat, content, { quoted: m.raw })
@@ -141,7 +159,7 @@ async function sendTextMenu(ctx) {
   const { sock, m, config } = ctx
   const caption = buildMenuHeader(ctx)
   try {
-    const media = await bannerMedia(config.banner)
+    const media = await menuCardMedia(ctx)
     await sock.sendMessage(m.chat, {
       ...media,
       caption,

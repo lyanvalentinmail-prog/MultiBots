@@ -62,7 +62,7 @@ La sesión queda en `bots/<bot>/sessions/`. Para volver a vincular: `.delsession
 npm run setup      # asistente interactivo para config.json
 npm run check      # sintaxis + config válida + banner + plugins (alias: npm run doctor)
 npm run fix:sharp  # reintenta preparar sharp
-npm test           # 100 tests (node --test)
+npm test           # 111 tests (node --test)
 ```
 
 `config.json` se **recarga solo** al editarlo, con el bot en marcha.
@@ -100,12 +100,18 @@ WhatsApp no dibuja igual cada tipo de botón, así que el estilo es configurable
 
 Pulsar cualquier botón responde igual sea cual sea el estilo: el handler lee `templateButtonReplyMessage`, `buttonsResponseMessage`, `listResponseMessage` e `interactiveResponseMessage`. Si el envío falla, el bot manda **automáticamente** el banner más un menú de texto con los tres comandos, que funcionan siempre.
 
-### Tarjeta HTML del menú
+### La tarjeta aparece con el menú (sin mandar archivos)
 
-Cada `.menu` adjunta además `assets/menu.html` rellena: la misma tarjeta (banner incrustado en base64, título, saludo con tu nombre, *Selecciona el menu que necesites*, copyright y conteo de comandos) con **los tres botones separados, uno por fila**. Se abre en el navegador del teléfono.
+Cada `.menu` se ve en el chat como una **tarjeta-imagen** compuesta en el propio bot (`src/utils/card.js`): el banner arriba, fundido con el cuerpo oscuro, y debajo el título, el saludo con tu nombre, *Selecciona el menu que necesites*, el conteo de comandos, el copyright y **los tres botones separados, uno por fila** (con su comando al lado, y Support con su enlace). Los botones reales de WhatsApp van debajo, pulsables.
 
-- `.menuhtml` (o `.menu html`) la envía sola, sin el menú.
-- `.setmenuhtml on|off` (owner) la activa o desactiva; también `config.json → menu.htmlEnabled`.
+- No se envía ningún archivo: la tarjeta *es* la imagen del mensaje. Si no se puede componer (falta la fuente, falla sharp), el menú usa el banner de siempre y nada se rompe.
+- `menu.cardEnabled: false` vuelve al banner original; `menu.cardFont` cambia la fuente.
+- Detalle de Termux: el sharp de WebAssembly usa resvg, que **no carga fuentes**, así que `<text>` saldría en blanco. Por eso cada texto se convierte en trayectorias `<path>` con `opentype.js` y la DejaVu Sans que vive en `assets/fonts/`: se ve igual en nativo y en wasm. Los glifos que la fuente no tiene (emoji, CJK…) se descartan sólo en la imagen; en el texto del mensaje siguen intactos.
+
+El HTML (`assets/menu.html`) queda como versión para navegador, **sólo si la pedís**:
+
+- `.menuhtml` (o `.menu html`) la envía como documento.
+- `.setmenuhtml on|off` (owner) hace que vuelva a adjuntarse con cada menú; también `config.json → menu.htmlEnabled`.
 - `menu.htmlTemplate` permite usar otra plantilla. Se rellenan los marcadores `{title}`, `{botName}`, `{greeting}`, `{usuario}`, `{selectMenu}`, `{copyright}`, `{stats}`, `{banner}`, `{buttons}` y `{year}`; todo lo que venga del usuario se escapa.
 
 Todo el texto del menú es configurable en `config.json → menu`.
@@ -140,6 +146,7 @@ MultiBots/
         ├── assets/
         │   ├── banner.jpg       # Imagen del menú
         │   ├── menu.html        # 🔶 Plantilla de la tarjeta HTML del menú
+        │   ├── fonts/           # 🔶 DejaVu Sans: la tarjeta dibuja sus textos con ella
         │   └── characters.json  # Personajes del gacha
         ├── plugins/             # ⬅ TODA la funcionalidad (22 archivos, 225 plugins, 412 alias)
         │   ├── main.js          # (10) menu, menuhtml, menufull, fastcommand, support, ping, infobot, estadoapi, owner, id
@@ -189,8 +196,9 @@ MultiBots/
         │   ├── moderation.js    # Motor de antis (antilink, antispam, antidelete…)
         │   ├── subbots.js       # Gestor de sub-bots con sesiones propias
         │   ├── api.js           # Cliente de Velirius API (fetch, timeouts, límites)
-        │   └── utils/           # format, jid, media, messages, sticker, canvas,
-        │                        # characters, chat, economy, gif, group, paths, welcome
+        │   └── utils/           # card (🔶 tarjeta del menú), format, jid, media,
+        │                        # messages, sticker, canvas, characters, chat,
+        │                        # economy, gif, group, paths, welcome
         ├── scripts/
         │   ├── ensure-sharp.js  # sharp nativo o WebAssembly (Termux)
         │   ├── configure.js     # `npm run setup`
@@ -198,7 +206,7 @@ MultiBots/
         │   └── install-termux.sh
         ├── sessions/            # credenciales (gitignored)
         ├── data/                # database.json (gitignored)
-        └── tests/               # 21 suites, 100 tests (node --test)
+        └── tests/               # 22 suites, 111 tests (node --test)
 ```
 
 🔶 = archivos donde vive **nuestro** menú; el resto del motor es el original.
@@ -249,7 +257,8 @@ El loader valida que exista `execute()` y `commands`, y **falla si un alias est�
 | `banner` | Ruta o URL de la imagen del menú |
 | `menu` | `title`, `greeting`, `selectMenu`, `copyright`, `supportText`, `buttons` |
 | `menu.buttonStyle` | `template` (botones separados, por defecto), `native`, `buttons`, `sheet` o `carousel` — se prueba con `.menustyle` |
-| `menu.htmlEnabled`, `menu.htmlTemplate` | Tarjeta HTML que se adjunta al menú y su plantilla — `.setmenuhtml on|off` |
+| `menu.cardEnabled`, `menu.cardFont` | Tarjeta-imagen que aparece con el menú y su fuente (`assets/fonts/`) |
+| `menu.htmlEnabled`, `menu.htmlTemplate` | HTML para navegador: por defecto no se envía (`.menuhtml` lo pide) — `.setmenuhtml on|off` |
 | `menu.optionsText` | Título del botón cuando `buttonStyle` es `sheet` |
 | `menuMode` | `interactive` (nuestro menú con botones), `list` o `text` |
 | `mode` | `public` o `self` (sólo owners/mods) |
@@ -283,7 +292,7 @@ npm run check
 ## Tests
 
 ```bash
-npm test     # 100 tests en 21 suites
+npm test     # 111 tests en 22 suites
 ```
 
 Cubren el registro de plugins, el handler (permisos, cooldown, antis), el menú (nuestro diseño, botones, respaldos, filtros por rol), la API, economía, juegos, gacha, personajes, Pokémon, perfil, reacciones, stickers, canvas, sub-bots, moderación y configuración.

@@ -44,8 +44,8 @@ test('el handler ejecuta .menu y conserva el rol de moderador en el contexto', a
   })
 
   assert.equal(trackedCommand, 'menu')
-  // Menú de texto de MultiBots: banner con nuestro caption + los tres comandos + tarjeta HTML
-  assert.equal(sent.length, 3)
+  // Menú de texto de MultiBots: tarjeta con nuestro caption + los tres comandos
+  assert.equal(sent.length, 2)
   assert.match(sent[0].content.caption, /\*Satoru gojo\*/)
   assert.match(sent[0].content.caption, /¡Buenos días! ☀️ Moderador/)
   assert.match(sent[0].content.caption, /Selecciona el menu que necesites/)
@@ -53,7 +53,7 @@ test('el handler ejecuta .menu y conserva el rol de moderador en el contexto', a
   assert.match(sent[1].content.text, /\.fastcommand — \*Fast command\*/)
   assert.match(sent[1].content.text, /\.support — \*Support\*/)
   assert.match(sent[1].content.text, /Ⓒ Satoru gojo/)
-  assert.equal(sent[2].content.mimetype, 'text/html', 'el menú adjunta su tarjeta HTML')
-  assert.ok(sent[2].content.document, 'la tarjeta HTML va como documento')
+  assert.ok(Buffer.isBuffer(sent[0].content.image), 'el menú aparece como tarjeta-imagen')
+  assert.ok(!sent.some(({ content }) => content?.mimetype === 'text/html'), 'no se manda ningún archivo HTML')
   assert.ok(!sent.some(({ content }) => String(content.text || '').includes('isMod is not defined')))
 })
