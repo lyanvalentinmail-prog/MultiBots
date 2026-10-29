@@ -28,13 +28,17 @@ for (const file of files) {
 const config = new ConfigStore()
 await config.init({ watch: false })
 if (!isHttpUrl(config.data.banner)) await access(resolveBot(config.data.banner))
-// La tarjeta HTML del menú es opcional, pero si está activada la plantilla debe existir
-if (config.data.menu?.htmlEnabled !== false) {
+// La tarjeta HTML es opcional (.menuhtml); si se activa, su plantilla debe existir
+if (config.data.menu?.htmlEnabled) {
   await access(resolveBot(config.data.menu?.htmlTemplate || './assets/menu.html'))
+}
+// La tarjeta-imagen del menú se compone con esta fuente
+if (config.data.menu?.cardEnabled !== false) {
+  await access(resolveBot(config.data.menu?.cardFont || './assets/fonts/DejaVuSans.ttf'))
 }
 const registry = await new PluginRegistry().load()
 await config.close()
 
 console.log(`✔ Sintaxis correcta: ${files.length} archivos`)
-console.log(`✔ Configuración válida, banner y plantilla HTML disponibles`)
+console.log(`✔ Configuración válida, banner, fuente y plantilla HTML disponibles`)
 console.log(`✔ Plugins válidos: ${registry.count} comandos (${registry.commands.size} alias)`)

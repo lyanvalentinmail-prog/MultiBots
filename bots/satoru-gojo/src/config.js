@@ -33,8 +33,11 @@ export const DEFAULT_CONFIG = {
       { id: 'menu_fast', label: 'Fast command', command: 'fastcommand' },
       { id: 'menu_support', label: 'Support', command: 'support' },
     ],
-    // Tarjeta HTML que se adjunta al menú (assets/menu.html)
-    htmlEnabled: true,
+    // Tarjeta HTML: no se envía sola con el menú (sólo .menuhtml)
+    htmlEnabled: false,
+    // Tarjeta-imagen compuesta en local que APARECE con el menú
+    cardEnabled: true,
+    cardFont: './assets/fonts/DejaVuSans.ttf',
     htmlTemplate: './assets/menu.html',
     // Tipo de botones: native | template | buttons | sheet | carousel
     buttonStyle: 'template',
@@ -134,6 +137,8 @@ export function normalizeConfig(input = {}) {
   // Tarjeta HTML y tipo de botones del menú
   config.menu.htmlEnabled = config.menu.htmlEnabled !== false
   config.menu.htmlTemplate = String(config.menu.htmlTemplate || defaults.menu.htmlTemplate).trim().slice(0, 200)
+  config.menu.cardEnabled = config.menu.cardEnabled !== false
+  config.menu.cardFont = String(config.menu.cardFont || defaults.menu.cardFont).trim().slice(0, 200)
   if (!BUTTON_STYLES.includes(config.menu.buttonStyle)) {
     throw new Error(`menu.buttonStyle debe ser uno de: ${BUTTON_STYLES.join(', ')}`)
   }

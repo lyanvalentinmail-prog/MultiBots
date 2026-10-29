@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { MessageHandler } from '../src/handler.js'
 import { PluginRegistry } from '../src/plugins.js'
 import { DEFAULT_CONFIG, normalizeConfig } from '../src/config.js'
@@ -15,6 +17,7 @@ function buildHandler(menuMode = 'interactive', menu = {}) {
   const relayed = []
   const sent = []
   const tracked = []
+  const uploads = []
   const config = normalizeConfig({
     ...structuredClone(DEFAULT_CONFIG),
     menuMode,
@@ -31,7 +34,11 @@ function buildHandler(menuMode = 'interactive', menu = {}) {
   }
   const sock = {
     user: { id: SENDER, jid: SENDER },
-    waUploadToServer: async () => ({ mediaUrl: 'https://example.invalid/m', directPath: '/m' }),
+    // lia sube el archivo cifrado desde disco: leerlo deja ver qué imagen viajó
+    waUploadToServer: async encFilePath => {
+      uploads.push(await readFile(encFilePath))
+      return { mediaUrl: 'https://example.invalid/m', directPath: '/m' }
+    },
     relayMessage: async (jid, message, options) => { relayed.push({ jid, message, options }); return 'ID' },
     sendMessage: async (jid, content, options) => { sent.push({ jid, content, options }); return { key: { id: 'K' } } },
     groupMetadata: async jid => ({ id: jid, subject: 'Grupo', participants: [] }),
@@ -48,11 +55,12 @@ function buildHandler(menuMode = 'interactive', menu = {}) {
     },
   }
   const handler = new MessageHandler({ registry, configStore, database, startedAt: Date.now() - 1000 })
-  return { handler, sock, relayed, sent, tracked, config, configStore }
+  return { handler, sock, relayed, sent, tracked, uploads, config, configStore }
 }
 
 const textOf = content => String(content?.text || content?.caption || '')
 const htmlOf = sent => sent.find(item => item.content?.mimetype === 'text/html')
+const sha1 = buffer => createHash('sha1').update(buffer).digest('hex')
 
 function templateOf(message) {
   return message?.templateMessage?.hydratedFourRowTemplate
@@ -93,24 +101,39 @@ test('.menu entrega por defecto botones separados (plantilla hidratada) con nues
   assert.deepEqual(templateButtons(message).map(button => button.id), ['menu_full', 'menu_fast', 'menu_support'])
 })
 
-test('.menu adjunta la tarjeta HTML con el banner incrustado y los botones separados', async () => {
-  const { handler, sock, sent } = buildHandler('interactive')
+test('.menu aparece en el chat como tarjeta-imagen: banner, textos y los 3 botones', async () => {
+  const { handler, sock, uploads, sent, relayed } = buildHandler('interactive')
+  await sendMenu(handler, sock)
+  assert.equal(relayed.length, 1)
+  assert.equal(htmlOf(sent), undefined, 'no se manda ningún archivo: la tarjeta aparece en el mensaje')
+  assert.equal(uploads.length, 1, 'subió una sola imagen: la tarjeta')
+  // lia cifra el archivo antes de subirlo: alcanza con verificar que subió una
+  // imagen del tamaño de la tarjeta (los píxeles se miran en tests/card.test.js)
+  assert.ok(uploads[0].length > 100_000, 'la tarjeta pesa más que el banner suelto')
+})
+
+test('con menu.htmlEnabled en true, el menú vuelve a adjuntar el archivo HTML', async () => {
+  const { handler, sock, sent } = buildHandler('interactive', { htmlEnabled: true })
   await sendMenu(handler, sock)
   const html = htmlOf(sent)
-  assert.ok(html, 'el menú debe adjuntar su HTML')
+  assert.ok(html, 'activado a mano, el HTML sí se adjunta')
   assert.equal(html.content.mimetype, 'text/html')
   assert.equal(html.content.fileName, 'satoru-gojo-menu.html')
-  assert.ok(html.content.document, 'viaja como documento')
   const document = html.content.document.toString('utf8')
   assert.match(document, /<h1>Satoru gojo<\/h1>/)
-  assert.match(document, /¡Buenos días! ☀️ Lyann/)
-  assert.match(document, /Selecciona el menu que necesites/)
-  assert.match(document, /Ⓒ Satoru gojo/)
   assert.match(document, /data:image\/jpeg;base64,/, 'el banner va incrustado')
-  assert.equal((document.match(/class="btn/g) || []).length, 3, 'los 3 botones')
-  assert.match(document, /flex-direction: column/, 'apilados y separados')
+  assert.equal((document.match(/class="btn/g) || []).length, 3, 'los 3 botones separados')
   assert.match(document, /href="https:\/\/wa\.me\/59896719709"/, 'Support enlaza al propietario')
   assert.ok(!/\{\w+\}/.test(document), 'no quedan marcadores sin rellenar')
+})
+
+test('con cardEnabled en false, el menú usa el banner original', async () => {
+  const { handler, sock, uploads } = buildHandler('interactive', { cardEnabled: false })
+  await sendMenu(handler, sock)
+  // lia cifra antes de subir: el ciphertext del banner (26 KB) pesa mucho menos
+  // que el de la tarjeta (>100 KB), así se distingue qué imagen viajó
+  assert.equal(uploads.length, 1)
+  assert.ok(uploads[0].length < 40_000, `viaja el banner suelto, no la tarjeta (${uploads[0].length} bytes)`)
 })
 
 test('la tarjeta HTML se puede pedir sola con .menuhtml y con ".menu html"', async () => {
@@ -224,13 +247,14 @@ test('si el envío interactivo falla, el usuario recibe igualmente un menú util
   sock.relayMessage = async () => { throw new Error('interactive no soportado') }
   await sendMenu(handler, sock)
   assert.equal(relayed.length, 0)
-  assert.equal(sent.length, 3, 'banner + menú de texto + tarjeta HTML')
-  assert.ok(sent[0].content.image)
+  assert.equal(sent.length, 2, 'tarjeta + menú de texto')
+  assert.ok(Buffer.isBuffer(sent[0].content.image), 'la tarjeta aparece igual')
+  assert.equal(htmlOf(sent), undefined, 'sin archivos adjuntos')
   const fallback = textOf(sent[1].content)
   assert.match(fallback, /\.menufull — \*Menu\*/)
   assert.match(fallback, /\.fastcommand — \*Fast command\*/)
   assert.match(fallback, /\.support — \*Support\*/)
-  assert.ok(htmlOf(sent), 'aunque fallen los botones, la tarjeta HTML llega igual')
+  assert.ok(Buffer.isBuffer(sent[0].content.image), 'aunque fallen los botones, la tarjeta aparece')
 })
 
 test('"menu" a secas abre el menú (está documentado sin prefijo)', async () => {

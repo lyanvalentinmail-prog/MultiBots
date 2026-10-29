@@ -41,8 +41,10 @@
         "command": "support"
       }
     ],
-    "htmlEnabled": true,
+    "htmlEnabled": false,
     "htmlTemplate": "./assets/menu.html",
+    "cardEnabled": true,
+    "cardFont": "./assets/fonts/DejaVuSans.ttf",
     "buttonStyle": "template",
     "optionsText": "☾ Selecciona una opción"
   },
