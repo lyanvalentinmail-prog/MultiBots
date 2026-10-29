@@ -29,7 +29,7 @@ export function weatherLabel(code) {
 }
 
 /**
- * "18°C · Parcialmente nublado" para unas coordenadas, cacheado 10 minutos.
+ * `{ temperature, label }` para unas coordenadas, cacheado 10 minutos.
  * Devuelve `null` ante cualquier fallo (sin red, timeout, respuesta rara).
  */
 export async function fetchWeather({ lat, lon, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
@@ -50,7 +50,7 @@ export async function fetchWeather({ lat, lon, timeoutMs = REQUEST_TIMEOUT_MS } 
       const data = await response.json()
       const current = data?.current_weather
       if (current && typeof current.temperature === 'number') {
-        value = `${Math.round(current.temperature)}°C · ${weatherLabel(current.weathercode)}`
+        value = { temperature: current.temperature, label: weatherLabel(current.weathercode) }
         ttl = CACHE_TTL_MS
       }
     }

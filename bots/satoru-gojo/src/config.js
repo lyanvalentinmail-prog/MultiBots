@@ -43,6 +43,9 @@ export const DEFAULT_CONFIG = {
     weatherEnabled: true,
     weatherLat: -34.9,
     weatherLon: -54.95,
+    weatherCity: 'Maldonado',
+    // Pie de la tarjeta: "✦ nombre · tagline ✦"
+    tagline: 'Premium WhatsApp Experience',
     // Tipo de botones: native | template | buttons | sheet | carousel
     // native = native flow: los 3 en vertical, separados uno por fila
     buttonStyle: 'native',
@@ -148,6 +151,8 @@ export function normalizeConfig(input = {}) {
   const coordinate = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
   config.menu.weatherLat = coordinate(config.menu.weatherLat, defaults.menu.weatherLat)
   config.menu.weatherLon = coordinate(config.menu.weatherLon, defaults.menu.weatherLon)
+  config.menu.weatherCity = String(config.menu.weatherCity ?? defaults.menu.weatherCity).trim().slice(0, 40)
+  config.menu.tagline = String(config.menu.tagline ?? defaults.menu.tagline).trim().slice(0, 60)
   if (!BUTTON_STYLES.includes(config.menu.buttonStyle)) {
     throw new Error(`menu.buttonStyle debe ser uno de: ${BUTTON_STYLES.join(', ')}`)
   }

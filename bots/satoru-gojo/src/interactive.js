@@ -9,6 +9,7 @@ import {
   buildFullMenu,
   buildMenuHeader,
   buildMenuSections,
+  buttonGlyph,
   menuCopyright,
 } from './menu.js'
 
@@ -61,19 +62,27 @@ export async function bannerMedia(banner) {
  */
 
 function menuButtons(config) {
-  return (config.menu?.buttons || []).map(button => ({ text: button.label, id: button.id }))
+  // El glifo viaja en el display_text: lo dibuja el propio WhatsApp
+  // (☰ Menu, ✦ Support, ☆ Fast command) como en los ejemplos de Drive.
+  return (config.menu?.buttons || []).map(button => ({
+    text: `${buttonGlyph(button)} ${button.label}`.trim(),
+    id: button.id,
+  }))
 }
 
 /**
  * Arma el contenido según el estilo pedido. `media` trae el banner ya leído;
  * si no hay banner (falló la lectura) los estilos que lo exigen caen a native.
+ * `extra` aporta title/subtitle: con caption, lia los pone en la cabecera del
+ * interactiveMessage (imagen + título + subtítulo, como en el ejemplo).
  */
-export function buildMenuContent(ctx, style, caption, media) {
+export function buildMenuContent(ctx, style, caption, media, extra = {}) {
   const { config, m } = ctx
   const buttons = menuButtons(config)
   const base = {
     ...media,
     ...(media.image ? { caption } : { text: caption }),
+    ...extra,
     footer: config.footer,
     contextInfo: { mentionedJid: [m.sender] },
   }
@@ -81,7 +90,7 @@ export function buildMenuContent(ctx, style, caption, media) {
   switch (style) {
     case 'template':
       // hydratedFourRowTemplate: título, contenido, pie y botones separados
-      return { ...base, title: config.menu?.title, templateButtons: buttons }
+      return { ...base, templateButtons: buttons }
 
     case 'buttons':
       // buttonsMessage clásico con cabecera de imagen
@@ -135,16 +144,40 @@ export async function menuCardMedia(ctx) {
 }
 
 /**
- * Nuestro menú: tarjeta con el caption (título, saludo, "Selecciona el menu que
- * necesites", copyright) y los tres botones Menu / Fast command / Support.
+ * Mensaje 1 del menú, como en los ejemplos de Drive: la tarjeta compuesta es
+ * TODO el mensaje (imagen sin caption); el texto vive dentro de la imagen.
  */
-async function sendOurMenu(ctx, withBanner = true) {
+export async function sendCardMessage(ctx) {
+  const { sock, m } = ctx
+  const media = await menuCardMedia(ctx)
+  return sendViaLia(sock, m.chat, {
+    ...media,
+    contextInfo: { mentionedJid: [m.sender] },
+  }, { quoted: m.raw })
+}
+
+/**
+ * Mensaje 2 del menú: cabecera con el banner, título y subtítulo (saludo con
+ * tu nombre), cuerpo "Selecciona el menu que necesites", pie con el copyright
+ * y los tres botones en vertical, separados (native flow por defecto).
+ */
+export async function sendButtonsMessage(ctx, style = ctx.config.menu?.buttonStyle) {
   const { sock, m, config } = ctx
-  const caption = buildMenuHeader(ctx)
-  const media = withBanner ? await menuCardMedia(ctx) : {}
-  const style = BUTTON_STYLES.includes(config.menu?.buttonStyle) ? config.menu.buttonStyle : 'native'
-  const content = buildMenuContent(ctx, style, caption, media)
+  const menu = config.menu || {}
+  const userName = String(m?.name || 'Usuario').trim() || 'Usuario'
+  const media = await bannerMedia(config.banner)
+  const usedStyle = BUTTON_STYLES.includes(style) ? style : 'native'
+  const content = buildMenuContent(ctx, usedStyle, menu.selectMenu || '', media, {
+    title: config.botName,
+    subtitle: `${menu.greeting || ''} ${userName}`.trim(),
+  })
   return sendViaLia(sock, m.chat, content, { quoted: m.raw })
+}
+
+/** Nuestro menú: la tarjeta-imagen y, detrás, el mensaje con los botones. */
+async function sendOurMenu(ctx) {
+  await sendCardMessage(ctx)
+  return sendButtonsMessage(ctx)
 }
 
 /** Menú de texto equivalente: siempre funciona aunque WhatsApp no muestre botones. */
@@ -245,11 +278,11 @@ async function deliverMenuMessage(ctx) {
 
   if (mode !== 'text') {
     try {
-      return await sendOurMenu(ctx, true)
+      return await sendOurMenu(ctx)
     } catch (error) {
-      console.warn(`⚠ Menú con banner falló: ${error.message}`)
+      console.warn(`⚠ Menú con tarjeta falló: ${error.message}`)
       try {
-        return await sendOurMenu(ctx, false)
+        return await sendButtonsMessage(ctx)
       } catch (secondError) {
         console.warn(`⚠ Menú interactivo falló: ${secondError.message}`)
       }

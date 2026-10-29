@@ -72,7 +72,7 @@ test('renderMenuHtml entrega la tarjeta completa sin marcadores sueltos', async 
   assert.match(html, /<span class="lbl">ESTADO<\/span><span class="val">Activo<\/span>/)
   assert.match(html, /<span class="lbl">COMANDOS TOTALES<\/span><span class="val">\d+<\/span>/)
   assert.match(html, /<span class="lbl">CLIMA<\/span>/, 'la ficha del clima del diseño de Drive')
-  assert.match(html, /<span class="lbl">HORA<\/span><span class="val">\d{2}:\d{2}<\/span>/)
+  assert.match(html, /<span class="lbl">HORA<\/span><span class="val">\d{2}:\d{2}:\d{2}<\/span>/)
   assert.match(html, /<code>\.menu &lt;categoría&gt;<\/code>/)
   // Los conteos salen del registro real, así el test no se rompe al añadir plugins
   assert.ok(html.includes(`${registry.count} comandos · ${registry.commands.size} alias ·`), 'debe informar los comandos del registro')
@@ -102,7 +102,7 @@ test('por defecto el menú NO manda el archivo HTML: aparece como tarjeta-imagen
   ctx.sock.user = { id: CHAT, jid: CHAT }
   await deliverMenu(ctx)
   assert.equal(ctx.messages.length, 0, 'sin documentos adjuntos')
-  assert.equal(relayed.length, 1, 'el menú se ve en el chat como tarjeta con botones')
+  assert.equal(relayed.length, 2, 'el menú se ve en el chat: tarjeta + mensaje de botones')
 })
 
 test('sendMenuHtml envía la tarjeta como documento text/html', async () => {
@@ -126,7 +126,7 @@ test('con htmlEnabled en true, deliverMenu adjunta el archivo HTML detrás del m
   ctx.sock.waUploadToServer = async () => ({ mediaUrl: 'https://example.invalid/m', directPath: '/m' })
   ctx.sock.user = { id: CHAT, jid: CHAT }
   await deliverMenu(ctx)
-  assert.equal(relayed.length, 1, 'primero el menú con sus botones')
+  assert.equal(relayed.length, 2, 'primero la tarjeta y el mensaje de botones')
   assert.equal(ctx.messages.length, 1, 'después el archivo HTML (activado)')
   assert.equal(ctx.messages[0].content.mimetype, 'text/html')
 })
@@ -145,7 +145,7 @@ test('si la plantilla HTML falta, el menú se entrega igual', async () => {
   } finally {
     console.warn = originalWarn
   }
-  assert.equal(relayed.length, 1, 'el menú no se pierde por el HTML')
+  assert.equal(relayed.length, 2, 'el menú no se pierde por el HTML')
   assert.equal(ctx.messages.length, 0)
   assert.match(warnings.join('\n'), /No se pudo enviar el menú HTML/)
 })

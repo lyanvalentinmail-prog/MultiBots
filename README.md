@@ -98,15 +98,21 @@ WhatsApp no dibuja igual cada tipo de botón, así que el estilo es configurable
 
 > `native` es el formato que dibuja el WhatsApp actual (Android, iOS y Web): los botones van **en vertical, uno por fila, separados**. `template` y `buttons` son los formatos clásicos de chips horizontales pegados al mensaje: se ven en WhatsApp Web/Escritorio e iOS y en canales, pero **algunos clientes Android los ignoran**. Si algo no aparece en tu teléfono, prueba `.menustyle sheet` y se guarda solo.
 
+Los botones viajan en **su propio mensaje**, como en los ejemplos de Drive: cabecera con el banner, título con el nombre del bot, subtítulo con el saludo y tu nombre, cuerpo *Selecciona el menu que necesites*, pie con el copyright y debajo las tres filas verticales — cada una con su glifo (`☰ Menu`, `☆ Fast command`, `✦ Support`).
+
 Pulsar cualquier botón responde igual sea cual sea el estilo: el handler lee `templateButtonReplyMessage`, `buttonsResponseMessage`, `listResponseMessage` e `interactiveResponseMessage`. Si el envío falla, el bot manda **automáticamente** el banner más un menú de texto con los tres comandos, que funcionan siempre.
 
 ### La tarjeta aparece con el menú (sin mandar archivos)
 
-Cada `.menu` se ve en el chat como una **tarjeta-imagen** compuesta en el propio bot (`src/utils/card.js`) con el diseño del HTML del Drive: el banner arriba y debajo el nombre con su versión, el saludo con tu nombre, y las fichas **ESTADO**, **MODO**, **COMANDOS TOTALES** y **TIEMPO DE ACTIVIDAD**, la ficha **CLIMA** (open-meteo, sin clave; si no hay red dice *Sin datos*), la fila verde con la **HORA** y la fecha, el aviso *Escribe `.menu <categoría>` para ver las funciones* y **los tres botones en vertical, separados uno por fila** (con su comando al lado, y Support con su enlace). Los botones reales de WhatsApp van debajo, pulsables y también en vertical.
+Cada `.menu` manda **dos mensajes**, igual que los ejemplos reales de Drive (carpeta `Ejemplos`):
+
+1. La **tarjeta-imagen** compuesta en el propio bot (`src/utils/card.js`): el banner fundiéndose con el cuerpo oscuro, el nombre en mayúsculas con su versión, el saludo con la mano 👋 y tu nombre en negrita, las fichas **ESTADO**, **MODO**, **COMANDOS TOTALES** y **TIEMPO DE ACTIVIDAD**, la ficha **CLIMA** con el solcito y la ciudad (open-meteo, sin clave; si no hay red dice *Sin datos*), la fila verde con la **HORA con segundos** y la fecha completa, el aviso *Escribe `.menu <categoría>` para ver las funciones* y el pie *✦ nombre · tagline ✦*. Sin caption y sin botones dibujados: el texto vive en la imagen.
+2. El **mensaje de botones**: cabecera con el banner, título, subtítulo con tu nombre, cuerpo y pie, y los tres botones en vertical separados (native flow por defecto).
 
 - No se envía ningún archivo: la tarjeta *es* la imagen del mensaje. Si no se puede componer (falta la fuente, falla sharp), el menú usa el banner de siempre y nada se rompe.
 - `menu.cardEnabled: false` vuelve al banner original; `menu.cardFont` cambia la fuente.
-- `menu.weatherEnabled: false` quita la ficha CLIMA (y no toca la red); `menu.weatherLat` / `menu.weatherLon` fijan de dónde se lee el clima.
+- `menu.weatherEnabled: false` quita la ficha CLIMA (y no toca la red); `menu.weatherLat` / `menu.weatherLon` / `menu.weatherCity` fijan de dónde se lee el clima y qué ciudad se muestra.
+- `menu.tagline` cambia el texto gris del pie (*Premium WhatsApp Experience* por defecto).
 - Detalle de Termux: el sharp de WebAssembly usa resvg, que **no carga fuentes**, así que `<text>` saldría en blanco. Por eso cada texto se convierte en trayectorias `<path>` con `opentype.js` y la DejaVu Sans que vive en `assets/fonts/`: se ve igual en nativo y en wasm. Los glifos que la fuente no tiene (emoji, CJK…) se descartan sólo en la imagen; en el texto del mensaje siguen intactos.
 
 El HTML (`assets/menu.html`) queda como versión para navegador, **sólo si la pedís**:
@@ -259,7 +265,8 @@ El loader valida que exista `execute()` y `commands`, y **falla si un alias est�
 | `menu` | `title`, `greeting`, `selectMenu`, `copyright`, `supportText`, `buttons` |
 | `menu.buttonStyle` | `native` (botones en vertical separados, por defecto), `template`, `buttons`, `sheet` o `carousel` — se prueba con `.menustyle` |
 | `menu.cardEnabled`, `menu.cardFont` | Tarjeta-imagen que aparece con el menú y su fuente (`assets/fonts/`) |
-| `menu.weatherEnabled`, `menu.weatherLat`, `menu.weatherLon` | Ficha CLIMA de la tarjeta: open-meteo sin clave, cacheado 10 min |
+| `menu.weatherEnabled`, `menu.weatherLat`, `menu.weatherLon`, `menu.weatherCity` | Ficha CLIMA de la tarjeta: open-meteo sin clave, cacheado 10 min, y ciudad mostrada |
+| `menu.tagline` | Texto gris del pie de la tarjeta (`✦ nombre · tagline ✦`) |
 | `menu.htmlEnabled`, `menu.htmlTemplate` | HTML para navegador: por defecto no se envía (`.menuhtml` lo pide) — `.setmenuhtml on|off` |
 | `menu.optionsText` | Título del botón cuando `buttonStyle` es `sheet` |
 | `menuMode` | `interactive` (nuestro menú con botones), `list` o `text` |

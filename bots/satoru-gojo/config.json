@@ -49,7 +49,9 @@
     "optionsText": "☾ Selecciona una opción",
     "weatherEnabled": true,
     "weatherLat": -34.9,
-    "weatherLon": -54.95
+    "weatherLon": -54.95,
+    "weatherCity": "Maldonado",
+    "tagline": "Premium WhatsApp Experience"
   },
   "api": {
     "baseUrl": "https://velirius-api-sd8u.vercel.app",

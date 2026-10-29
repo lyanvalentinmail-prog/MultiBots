@@ -83,48 +83,51 @@ async function sendMenu(handler, sock, text = '.menu', id = 'A1') {
   })
 }
 
-test('.menu entrega por defecto los 3 botones en vertical (native flow) con nuestro caption', async () => {
+test('.menu entrega la tarjeta y, detrás, los 3 botones en vertical (native flow)', async () => {
   const { handler, sock, relayed } = buildHandler('interactive')
   await sendMenu(handler, sock)
-  assert.equal(relayed.length, 1, 'debe retransmitir un único mensaje de menú')
-  const message = relayed[0].message
+  assert.equal(relayed.length, 2, 'tarjeta-imagen + mensaje de botones, como en el ejemplo')
+  const card = relayed[0].message
+  assert.ok(card.imageMessage, 'el primer mensaje es la tarjeta como imagen')
+  assert.ok(!card.imageMessage.caption, 'la imagen no lleva caption')
+  const message = relayed[1].message
   const interactive = message?.interactiveMessage
   assert.ok(interactive, 'por defecto el menú viaja como interactiveMessage: botones en vertical')
-  assert.ok(interactive.header?.imageMessage, 'debe llevar la tarjeta')
-  assert.match(interactive.body.text, /\*Satoru gojo\*/)
-  assert.match(interactive.body.text, /¡Buenos días! ☀️ Lyann/)
+  assert.ok(interactive.header?.imageMessage, 'la cabecera lleva el banner')
+  assert.equal(interactive.header.title, 'Satoru Gojo')
+  assert.equal(interactive.header.subtitle, '¡Buenos días! ☀️ Lyann')
   assert.match(interactive.body.text, /Selecciona el menu que necesites/)
-  assert.match(interactive.body.text, /```Ⓒ Satoru gojo```/)
   assert.match(interactive.footer?.text || '', /Ⓒ Satoru gojo/)
   // Tres botones quick_reply, cada uno en su fila: separados, no pegados
   const buttons = quickReplies(message)
-  assert.deepEqual(buttons.map(button => button.params.display_text), ['Menu', 'Fast command', 'Support'])
+  assert.deepEqual(buttons.map(button => button.params.display_text), ['☰ Menu', '☆ Fast command', '✦ Support'])
   assert.deepEqual(buttons.map(button => button.params.id), ['menu_full', 'menu_fast', 'menu_support'])
   assert.ok(buttons.every(button => button.name === 'quick_reply'))
 })
 
-test('con buttonStyle template el menú vuelve a la plantilla hidratada', async () => {
+test('con buttonStyle template el mensaje de botones vuelve a la plantilla hidratada', async () => {
   const { handler, sock, relayed } = buildHandler('interactive', { buttonStyle: 'template' })
   await sendMenu(handler, sock)
-  const message = relayed[0].message
+  const message = relayed[1].message
   const template = templateOf(message)
-  assert.ok(template, 'con template el menú viaja como templateMessage')
+  assert.ok(template, 'con template el mensaje de botones viaja como templateMessage')
   assert.ok(template.imageMessage, 'debe llevar el banner')
   assert.match(template.hydratedContentText, /Selecciona el menu que necesites/)
   assert.equal(template.hydratedFooterText, 'Ⓒ Satoru gojo')
-  assert.deepEqual(templateButtons(message).map(button => button.displayText), ['Menu', 'Fast command', 'Support'])
+  assert.deepEqual(templateButtons(message).map(button => button.displayText), ['☰ Menu', '☆ Fast command', '✦ Support'])
   assert.deepEqual(templateButtons(message).map(button => button.id), ['menu_full', 'menu_fast', 'menu_support'])
 })
 
-test('.menu aparece en el chat como tarjeta-imagen: banner, textos y los 3 botones', async () => {
+test('.menu aparece en el chat como tarjeta-imagen y sube también el banner de la cabecera', async () => {
   const { handler, sock, uploads, sent, relayed } = buildHandler('interactive')
   await sendMenu(handler, sock)
-  assert.equal(relayed.length, 1)
+  assert.equal(relayed.length, 2)
   assert.equal(htmlOf(sent), undefined, 'no se manda ningún archivo: la tarjeta aparece en el mensaje')
-  assert.equal(uploads.length, 1, 'subió una sola imagen: la tarjeta')
-  // lia cifra el archivo antes de subirlo: alcanza con verificar que subió una
-  // imagen del tamaño de la tarjeta (los píxeles se miran en tests/card.test.js)
+  assert.equal(uploads.length, 2, 'la tarjeta y el banner de la cabecera de botones')
+  // lia cifra el archivo antes de subirlo: alcanza con verificar los tamaños
+  // (los píxeles se miran en tests/card.test.js)
   assert.ok(uploads[0].length > 100_000, 'la tarjeta pesa más que el banner suelto')
+  assert.ok(uploads[1].length < 40_000, 'la segunda subida es el banner')
 })
 
 test('con menu.htmlEnabled en true, el menú vuelve a adjuntar el archivo HTML', async () => {
@@ -147,8 +150,8 @@ test('con cardEnabled en false, el menú usa el banner original', async () => {
   await sendMenu(handler, sock)
   // lia cifra antes de subir: el ciphertext del banner (26 KB) pesa mucho menos
   // que el de la tarjeta (>100 KB), así se distingue qué imagen viajó
-  assert.equal(uploads.length, 1)
-  assert.ok(uploads[0].length < 40_000, `viaja el banner suelto, no la tarjeta (${uploads[0].length} bytes)`)
+  assert.equal(uploads.length, 2, 'tarjeta-fallback(banner) + cabecera')
+  assert.ok(uploads.every(upload => upload.length < 40_000), `viaja el banner suelto, no la tarjeta (${uploads.map(u => u.length)})`)
 })
 
 test('la tarjeta HTML se puede pedir sola con .menuhtml y con ".menu html"', async () => {
@@ -204,10 +207,10 @@ test('los botones de native flow y los clásicos también responden al pulsarlos
 test('con buttonStyle native el menú vuelve a ser un interactiveMessage con quick_reply', async () => {
   const { handler, sock, relayed } = buildHandler('interactive', { buttonStyle: 'native' })
   await sendMenu(handler, sock)
-  const message = relayed[0].message
+  const message = relayed[1].message
   assert.ok(message.interactiveMessage.header?.imageMessage, 'debe llevar el banner')
   const buttons = quickReplies(message)
-  assert.deepEqual(buttons.map(button => button.params.display_text), ['Menu', 'Fast command', 'Support'])
+  assert.deepEqual(buttons.map(button => button.params.display_text), ['☰ Menu', '☆ Fast command', '✦ Support'])
   assert.deepEqual(buttons.map(button => button.params.id), ['menu_full', 'menu_fast', 'menu_support'])
   assert.ok(buttons.every(button => button.name === 'quick_reply'))
 })
@@ -275,7 +278,7 @@ test('si el envío interactivo falla, el usuario recibe igualmente un menú util
 test('"menu" a secas abre el menú (está documentado sin prefijo)', async () => {
   const { handler, sock, relayed, tracked } = buildHandler('interactive')
   await sendMenu(handler, sock, 'menu', 'G1')
-  assert.equal(relayed.length, 1, 'menu sin prefijo debe abrir el menú')
+  assert.equal(relayed.length, 2, 'menu sin prefijo debe abrir el menú (tarjeta + botones)')
   assert.deepEqual(tracked, ['menu'])
 })
 

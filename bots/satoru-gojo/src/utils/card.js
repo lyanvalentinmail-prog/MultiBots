@@ -7,10 +7,13 @@ import { packageVersion, resolveBot } from './paths.js'
 import { fetchWeather } from './weather.js'
 
 /**
- * Tarjeta del menú compuesta en local, calcada del diseño del HTML que está en
- * Drive (HtmlExample): banner arriba y debajo las fichas ESTADO / MODO /
- * COMANDOS TOTALES / TIEMPO DE ACTIVIDAD, CLIMA, la fila verde de HORA y fecha,
- * el aviso de `.menu <categoría>` y los 3 botones en vertical, separados.
+ * Tarjeta del menú compuesta en local, calcada de los ejemplos reales de
+ * WhatsApp que están en Drive (carpeta "Ejemplos"): el banner se funde con el
+ * cuerpo oscuro, título en mayúsculas, saludo con la mano, fichas ESTADO /
+ * MODO / TOTAL DE COMANDOS / TIEMPO DE ACTIVIDAD, ficha CLIMA con ciudad, la
+ * fila verde con la HORA (con segundos) y la fecha, el aviso de
+ * `.menu <categoría>` y el pie con el nombre del bot. Los botones NO viven en
+ * la imagen: van en su mensaje aparte, en vertical y separados.
  *
  * Detalle importante: el sharp de Termux corre sobre WebAssembly y su
  * renderizador SVG (resvg) no carga fuentes, así que `<text>` sale en blanco.
@@ -25,13 +28,12 @@ export const DEFAULT_CARD_FONT = './assets/fonts/DejaVuSans.ttf'
 
 const PAD = 56
 const GAP = 24
-const TILE_HEIGHT = 148
-const HINT_HEIGHT = 120
-const BUTTON_HEIGHT = 96
+const TILE_HEIGHT = 132
+const HINT_HEIGHT = 104
 const BODY_BACKGROUND = '#0d1117'
 
 const COLORS = {
-  title: '#c9c2ff',
+  title: '#ffffff',
   name: '#ffffff',
   muted: '#9aa4b2',
   label: '#8b949e',
@@ -43,12 +45,7 @@ const COLORS = {
   hourAccent: '#3fb950',
   amber: '#e3b341',
   foot: '#8b7bd8',
-  button: '#161b22',
-  buttonBorder: '#262d37',
-  buttonLabel: '#ffffff',
-  buttonHint: '#9ca3af',
-  supportBorder: '#3b82f6',
-  supportLabel: '#60a5fa',
+  footName: '#3fb950',
 }
 
 const fontCache = new Map()
@@ -65,7 +62,7 @@ export async function loadCardFont(file = DEFAULT_CARD_FONT) {
 }
 
 /** Equivalencias para glifos que la fuente no trae (Ⓒ existe en el HTML, © en la tarjeta). */
-const CARD_CHAR_SUBSTITUTIONS = { 'Ⓒ': '©' }
+const CARD_CHAR_SUBSTITUTIONS = { '\u24B8': '\u00A9' }
 
 /** DejaVu no cubre todos los scripts: lo que no tiene glifo se descarta. */
 export function drawableText(font, text = '') {
@@ -113,7 +110,7 @@ function textPath(font, text, { x, y, size, fill, fauxBold = 0, anchor = 'start'
 }
 
 /** Varios tramos de texto seguidos en la misma línea, cada uno con su color. */
-function segmentsPath(font, segments, { x, y, size, maxWidth = CARD_WIDTH - PAD * 2 }) {
+function segmentsPath(font, segments, { x, y, size, maxWidth = CARD_WIDTH - PAD * 2, anchor = 'start' }) {
   const clean = segments
     .map(segment => {
       const raw = String(segment.text || '')
@@ -125,17 +122,15 @@ function segmentsPath(font, segments, { x, y, size, maxWidth = CARD_WIDTH - PAD 
       }
     })
     .filter(segment => segment.text)
-  if (!clean.length) return { svg: '', height: size }
+  if (!clean.length) return { svg: '', height: size, width: 0 }
   let current = size
   // drawableText recorta los espacios de los bordes: se miden aparte para que
   // "Escribe " + ".menu <categoría>" + " para ver…" no queden pegados.
   const space = () => textWidth(font, ' ', current)
-  const total = () => clean.reduce((sum, segment) => {
-    const edges = (segment.lead ? space() : 0) + (segment.trail ? space() : 0)
-    return sum + textWidth(font, segment.text, current) + edges
-  }, 0)
+  const widthOf = segment => textWidth(font, segment.text, current) + (segment.lead ? space() : 0) + (segment.trail ? space() : 0)
+  const total = () => clean.reduce((sum, segment) => sum + widthOf(segment), 0)
   while (current > size * 0.6 && total() > maxWidth) current -= 1
-  let offset = 0
+  let offset = anchor === 'middle' ? -total() / 2 : 0
   const parts = []
   for (const segment of clean) {
     if (segment.lead) offset += space()
@@ -151,7 +146,7 @@ function segmentsPath(font, segments, { x, y, size, maxWidth = CARD_WIDTH - PAD 
     offset += textWidth(font, segment.text, current)
     if (segment.trail) offset += space()
   }
-  return { svg: parts.filter(Boolean).join('\n'), height: current }
+  return { svg: parts.filter(Boolean).join('\n'), height: current, width: total() }
 }
 
 /* --- Iconos: formas SVG simples (resvg wasm no dibuja texto ni emoji) ----- */
@@ -162,20 +157,19 @@ const dot = (x, y, color, r = 3) => `<circle cx="${x}" cy="${y}" r="${r}" fill="
 const ICONS = {
   person: (x, y, color) => icon(x, y, color, '<circle cx="28" cy="16" r="11"/><path d="M9 47 a19 19 0 0 1 38 0"/>'),
   chat: (x, y, color) => icon(x, y, color, `<rect x="7" y="9" width="42" height="30" rx="9"/><path d="M17 39 l-4 10 l13 -10"/>${dot(20, 24, color)}${dot(28, 24, color)}${dot(36, 24, color)}`),
-  gear: (x, y, color) => icon(x, y, color, '<circle cx="28" cy="28" r="11" stroke-width="6"/><path d="M28 7 v6 M28 43 v6 M7 28 h6 M43 28 h6 M13 13 l4 4 M39 39 l4 4 M43 13 l-4 4 M17 39 l-4 4"/>'),
-  clock: (x, y, color) => icon(x, y, color, '<circle cx="28" cy="28" r="19"/><path d="M28 16 v12 l9 6"/>'),
-  weather: (x, y, color) => icon(x, y, color, '<circle cx="19" cy="17" r="8"/><path d="M19 3 v3 M33 17 h-3 M29 7 l-2 2 M9 7 l2 2"/><path d="M17 45 a8 8 0 0 1 -1 -16 a11 11 0 0 1 21 -2 a8 8 0 0 1 2 18 z"/>'),
+  sun: (x, y, color) => `  <g transform="translate(${x} ${y})" stroke="${color}" stroke-width="4" stroke-linecap="round" fill="none"><circle cx="12" cy="12" r="6" fill="${color}" stroke="none"/><path d="M12 1 v3 M12 20 v3 M1 12 h3 M20 12 h3 M4 4 l2 2 M18 18 l2 2 M20 4 l-2 2 M6 18 l-2 2"/></g>`,
   bulb: (x, y, color) => icon(x, y, color, '<circle cx="28" cy="21" r="13"/><path d="M28 34 v-9 M22 40 h12 M24 46 h8"/>'),
-  calendar: (x, y, color) => icon(x, y, color, `<rect x="9" y="12" width="38" height="33" rx="7"/><path d="M9 23 h38 M19 8 v8 M37 8 v8"/>${dot(19, 31, color)}${dot(28, 31, color)}${dot(37, 31, color)}${dot(19, 38, color)}${dot(28, 38, color)}`),
+  /** Mano saludando, amarilla como el emoji 👋 del ejemplo. */
+  wave: (x, y) => `  <g transform="translate(${x} ${y})" fill="#ffca28"><rect x="7" y="8" width="7" height="20" rx="3.5" transform="rotate(-10 10 18)"/><rect x="16" y="4" width="7" height="24" rx="3.5" transform="rotate(-3 19 16)"/><rect x="25" y="6" width="7" height="22" rx="3.5" transform="rotate(4 28 17)"/><rect x="33" y="10" width="7" height="18" rx="3.5" transform="rotate(12 36 19)"/><path d="M9 26 q-1 12 8 16 t18 -1 q7 -4 7 -13 l0 -5 q-16 5 -33 3 z"/><rect x="0" y="24" width="7" height="14" rx="3.5" transform="rotate(40 3 31)"/></g>`,
 }
 
 /* --- Datos vivos de las fichas ------------------------------------------- */
 
-const WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 const pad2 = value => String(value).padStart(2, '0')
 
-/** "2d 4h 12m" / "12m 5s" / "40s": tiempo de actividad corto. */
+/** "2d 4h 12m" / "12m" / "40s": tiempo de actividad corto. */
 export function formatUptime(seconds = process.uptime()) {
   const total = Math.max(0, Math.floor(seconds))
   const days = Math.floor(total / 86400)
@@ -189,66 +183,53 @@ export function formatUptime(seconds = process.uptime()) {
   return parts.join(' ')
 }
 
-/** "mié 28 oct 2026" sin depender del ICU que traiga el Node de Termux. */
+/** "miércoles, 28 de octubre de 2026" sin depender del ICU de Termux. */
 export function spanishDate(date = new Date()) {
-  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+  return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} de ${MONTHS[date.getMonth()]} de ${date.getFullYear()}`
 }
 
+/** "23:54:07": como la fila verde del ejemplo, con segundos. */
 export function spanishTime(date = new Date()) {
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
 }
 
 export function botVersion(config = {}) {
   return String(config.version || packageVersion() || '').trim()
 }
 
+/** "Maldonado · parcialmente nublado 18°C" (o null sin red). */
+export async function weatherLine(menu = {}) {
+  const data = menu.weatherEnabled === false
+    ? null
+    : await fetchWeather({ lat: menu.weatherLat, lon: menu.weatherLon }).catch(() => null)
+  if (!data) return null
+  const label = String(data.label || '')
+  const soft = label ? label.charAt(0).toLowerCase() + label.slice(1) : ''
+  const city = String(menu.weatherCity || '').trim()
+  return [city, soft, `${Math.round(data.temperature)}°C`].filter(Boolean).join(' · ')
+}
+
 /* --- Bloques de la tarjeta ------------------------------------------------ */
 
-function tile(font, { x, y, width, height = TILE_HEIGHT, background = COLORS.tile, border = COLORS.tileBorder, icon: iconName, iconColor = COLORS.label, label, value, right }) {
-  const parts = [`  <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="24" fill="${background}" stroke="${border}" stroke-width="2"/>`]
-  if (ICONS[iconName]) parts.push(ICONS[iconName](x + 30, y + (height - 56) / 2, iconColor))
-  const textX = x + 112
-  const textWidthMax = width - 112 - (right ? 220 : 40)
-  parts.push(textPath(font, label, { x: textX, y: y + 60, size: 25, fill: iconColor === COLORS.label ? COLORS.label : iconColor, maxWidth: textWidthMax }).svg)
-  parts.push(textPath(font, value, { x: textX, y: y + 108, size: 40, fill: COLORS.value, fauxBold: 1.4, maxWidth: textWidthMax }).svg)
+/** Icono reducido para acompañar al valor de una ficha. */
+const scaled = (draw, factor) => (x, y, color) => `  <g transform="translate(${x} ${y}) scale(${factor})">${draw(0, 0, color).trim()}</g>`
+
+function tile(font, { x, y, width, height = TILE_HEIGHT, background = COLORS.tile, border = COLORS.tileBorder, label, labelColor = COLORS.label, labelIcon, value, valueIcon, valueColor = COLORS.value, right }) {
+  const parts = [`  <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="20" fill="${background}" stroke="${border}" stroke-width="2"/>`]
+  const labelX = x + (labelIcon ? 62 : 28)
+  if (labelIcon) parts.push(labelIcon(x + 26, y + 26, labelColor === COLORS.label ? COLORS.amber : labelColor))
+  parts.push(textPath(font, label, { x: labelX, y: y + 46, size: 24, fill: labelColor, maxWidth: width - labelX + x - 30 }).svg)
+
+  const valueX = x + (valueIcon ? 84 : 28)
+  if (valueIcon) parts.push(scaled(valueIcon, 0.8)(x + 26, y + 56, COLORS.label))
+  parts.push(textPath(font, value, { x: valueX, y: y + 100, size: 38, fill: valueColor, fauxBold: 1.4, maxWidth: width - valueX + x - (right ? 200 : 30) }).svg)
   if (right) parts.push(right)
   return parts.filter(Boolean).join('\n')
 }
 
-function buttonRow(font, button, { x, y, width, height = BUTTON_HEIGHT, prefix, supportUrl }) {
-  const isSupport = button.command === 'support' || Boolean(button.url)
-  const border = isSupport ? COLORS.supportBorder : COLORS.buttonBorder
-  const label = isSupport ? COLORS.supportLabel : COLORS.buttonLabel
-  const hint = isSupport ? (button.url || supportUrl) : `${prefix}${button.command}`
-  const radius = Math.round(height * 0.3)
-
-  const labelPath = textPath(font, button.label, {
-    x: x + 34,
-    y: y + height / 2 + 12,
-    size: 34,
-    fill: label,
-    fauxBold: 1.1,
-    maxWidth: width * 0.5,
-  })
-  const hintPath = textPath(font, hint, {
-    x: x + width - 34,
-    y: y + height / 2 + 9,
-    size: 24,
-    fill: COLORS.buttonHint,
-    anchor: 'end',
-    maxWidth: width * 0.38,
-  })
-
-  return [
-    `  <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${COLORS.button}" stroke="${border}" stroke-width="2"/>`,
-    labelPath.svg,
-    hintPath.svg,
-  ].filter(Boolean).join('\n')
-}
-
 /**
- * Devuelve el SVG del cuerpo de la tarjeta (lo que va debajo del banner: el
- * banner lo pone sharp debajo) y las alturas. Todo son rectángulos, formas y
+ * Devuelve el SVG completo de la tarjeta (el degradado que funde el banner con
+ * el cuerpo más todo lo demás) y las alturas. Todo son rectángulos, formas y
  * trayectorias — nada de `<text>`, que es lo que el sharp wasm no puede dibujar.
  */
 export async function buildCardSvg(ctx, options = {}) {
@@ -258,41 +239,39 @@ export async function buildCardSvg(ctx, options = {}) {
   const width = options.width || CARD_WIDTH
   const bannerHeight = options.bannerHeight ?? CARD_BANNER_HEIGHT
   const userName = String(m?.name || 'Usuario').trim() || 'Usuario'
-  const prefix = ctx.usedPrefix || config.prefix
-  const supportUrl = `https://wa.me/${config.owners?.[0]?.number || ''}`
   const contentWidth = width - PAD * 2
   const tileWidth = (contentWidth - GAP) / 2
   const version = botVersion(config)
   const fullName = version ? `${config.botName} ${version}` : String(config.botName || 'Bot')
 
-  const weather = menu.weatherEnabled === false
-    ? null
-    : await fetchWeather({ lat: menu.weatherLat, lon: menu.weatherLon }).catch(() => null)
+  const weather = await weatherLine(menu)
 
   const parts = []
-  parts.push(`  <rect x="0" y="0" width="${width}" height="${bannerHeight}" fill="${BODY_BACKGROUND}"/>`)
+  // Degradado que funde el banner con el cuerpo, como en el ejemplo
+  parts.push(`  <rect x="0" y="${bannerHeight - 300}" width="${width}" height="300" fill="url(#fade)"/>`)
 
-  let y = PAD
-  const title = textPath(font, fullName, { x: PAD, y: y + 62, size: 64, fill: COLORS.title, fauxBold: 2 })
+  let y = bannerHeight + PAD
+  const title = textPath(font, fullName.toUpperCase(), { x: PAD, y: y + 58, size: 58, fill: COLORS.title, fauxBold: 2.2 })
   parts.push(title.svg)
-  y += 62 + 34
+  y += 58 + 34
 
+  parts.push(ICONS.wave(PAD, y + 8))
   const greeting = segmentsPath(font, [
     { text: `${menu.greeting || '¡Hola,'} `, fill: COLORS.muted },
     { text: userName, fill: COLORS.name, fauxBold: 1.4 },
-    { text: ` · ${menu.selectMenu || '¿En qué puedo ayudarte hoy?'}`, fill: COLORS.muted },
-  ], { x: PAD, y: y + 40, size: 38 })
+    { text: '!', fill: COLORS.muted },
+  ], { x: PAD + 62, y: y + 40, size: 36 })
   parts.push(greeting.svg)
-  y += 40 + GAP + 18
+  y += 40 + GAP + 14
 
   // Fichas 2×2: estado, modo, comandos y actividad
   const mode = config.mode === 'self' ? 'Privado' : 'Público'
   const commands = registry?.count ?? registry?.commands?.size ?? 0
   const tiles = [
-    { icon: 'person', label: 'ESTADO', value: 'Activo' },
-    { icon: 'chat', label: 'MODO', value: mode },
-    { icon: 'gear', label: 'COMANDOS TOTALES', value: String(commands) },
-    { icon: 'clock', label: 'TIEMPO DE ACTIVIDAD', value: formatUptime() },
+    { label: 'ESTADO', value: 'Activo', valueIcon: ICONS.person },
+    { label: 'MODO', value: mode, valueIcon: ICONS.chat },
+    { label: 'COMANDOS TOTALES', value: String(commands) },
+    { label: 'TIEMPO DE ACTIVIDAD', value: formatUptime() },
   ]
   tiles.forEach((data, index) => {
     const x = PAD + (index % 2) * (tileWidth + GAP)
@@ -301,25 +280,26 @@ export async function buildCardSvg(ctx, options = {}) {
   })
   y += TILE_HEIGHT * 2 + GAP * 2 + GAP
 
-  // Clima a lo ancho
+  // Clima a lo ancho, con el solcito antes del rótulo como en el ejemplo
   parts.push(tile(font, {
     x: PAD,
     y,
     width: contentWidth,
-    icon: 'weather',
     label: 'CLIMA',
+    labelIcon: ICONS.sun,
     value: weather || 'Sin datos',
   }))
   y += TILE_HEIGHT + GAP
 
-  // Fila verde de hora + fecha
+  // Fila verde: hora con segundos a la izquierda, fecha a la derecha
   const dateRight = textPath(font, spanishDate(), {
-    x: PAD + contentWidth - 40,
-    y: y + TILE_HEIGHT / 2 + 10,
-    size: 30,
+    x: PAD + contentWidth - 36,
+    y: y + TILE_HEIGHT / 2 + 12,
+    size: 28,
     fill: COLORS.hourAccent,
     anchor: 'end',
-    maxWidth: 320,
+    fauxBold: 1,
+    maxWidth: 460,
   })
   parts.push(tile(font, {
     x: PAD,
@@ -327,51 +307,47 @@ export async function buildCardSvg(ctx, options = {}) {
     width: contentWidth,
     background: COLORS.hourTile,
     border: COLORS.hourBorder,
-    icon: 'clock',
-    iconColor: COLORS.hourAccent,
     label: 'HORA',
+    labelColor: COLORS.hourAccent,
     value: spanishTime(),
-    right: [
-      dateRight.svg,
-      ICONS.calendar(PAD + contentWidth - 40 - dateRight.width - 68, y + (TILE_HEIGHT - 56) / 2, COLORS.hourAccent),
-    ].filter(Boolean).join('\n'),
+    valueColor: COLORS.hourAccent,
+    right: dateRight.svg,
   }))
   y += TILE_HEIGHT + GAP
 
-  // Aviso de .menu <categoría>
-  parts.push(`  <rect x="${PAD}" y="${y}" width="${contentWidth}" height="${HINT_HEIGHT}" rx="24" fill="${COLORS.tile}" stroke="${COLORS.tileBorder}" stroke-width="2"/>`)
-  parts.push(ICONS.bulb(PAD + 30, y + (HINT_HEIGHT - 56) / 2, COLORS.amber))
+  // Aviso de .menu <categoría> con el foco ámbar
+  parts.push(`  <rect x="${PAD}" y="${y}" width="${contentWidth}" height="${HINT_HEIGHT}" rx="20" fill="${COLORS.tile}" stroke="${COLORS.tileBorder}" stroke-width="2"/>`)
+  parts.push(ICONS.bulb(PAD + 26, y + (HINT_HEIGHT - 56) / 2, COLORS.amber))
   const hint = segmentsPath(font, [
     { text: 'Escribe ', fill: COLORS.muted },
-    { text: `${prefix}menu <categoría>`, fill: COLORS.amber, fauxBold: 1.2 },
+    { text: `${ctx.usedPrefix || config.prefix}menu <categoría>`, fill: COLORS.amber, fauxBold: 1.2 },
     { text: ' para ver las funciones.', fill: COLORS.muted },
-  ], { x: PAD + 112, y: y + HINT_HEIGHT / 2 + 12, size: 32, maxWidth: contentWidth - 150 })
+  ], { x: PAD + 84, y: y + HINT_HEIGHT / 2 + 11, size: 30, maxWidth: contentWidth - 140 })
   parts.push(hint.svg)
-  y += HINT_HEIGHT + GAP + 8
+  y += HINT_HEIGHT + GAP + 14
 
-  // Los 3 botones: en vertical y separados, uno por fila
-  for (const button of menu.buttons || []) {
-    parts.push(buttonRow(font, button, { x: PAD, y, width: contentWidth, prefix, supportUrl }))
-    y += BUTTON_HEIGHT + GAP
-  }
-  y += 8
-
+  // Pie: ✦ nombre en verde · tagline ✦, centrado como en el ejemplo
   const diamond = ['✦', '◆', '·'].find(character => font.charToGlyph(character).index !== 0) || '·'
-  const foot = textPath(font, `${diamond}  ${fullName}  ${diamond}`, {
-    x: width / 2,
-    y: y + 26,
-    size: 28,
-    fill: COLORS.foot,
-    anchor: 'middle',
-  })
+  const foot = segmentsPath(font, [
+    { text: `${diamond} `, fill: COLORS.foot },
+    { text: fullName, fill: COLORS.footName, fauxBold: 1.2 },
+    { text: ` · ${menu.tagline || 'Premium WhatsApp Experience'} `, fill: COLORS.muted },
+    { text: diamond, fill: COLORS.foot },
+  ], { x: width / 2, y: y + 26, size: 26, anchor: 'middle' })
   parts.push(foot.svg)
   y += 26 + PAD
 
-  const bodyHeight = Math.round(y)
-  const svg = `<svg width="${width}" height="${bodyHeight}" viewBox="0 0 ${width} ${bodyHeight}" xmlns="http://www.w3.org/2000/svg">
+  const height = Math.round(y)
+  const svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${BODY_BACKGROUND}" stop-opacity="0"/>
+      <stop offset="1" stop-color="${BODY_BACKGROUND}" stop-opacity="0.96"/>
+    </linearGradient>
+  </defs>
 ${parts.filter(Boolean).join('\n')}
 </svg>`
-  return { svg, width, height: bannerHeight + bodyHeight, bodyHeight, bannerHeight }
+  return { svg, width, height, bannerHeight }
 }
 
 async function bannerBuffer(banner) {
@@ -387,14 +363,13 @@ const cardCache = new Map()
 const CARD_CACHE_LIMIT = 12
 
 /**
- * Tarjeta del menú como imagen JPEG: banner arriba y el cuerpo del diseño de
- * Drive debajo (fichas, hora, aviso y los 3 botones separados en vertical).
- * Devuelve `null` si no se puede componer (sin fuente, sin sharp...), y quien
- * llama usa entonces el banner de siempre.
+ * Tarjeta del menú como imagen JPEG: el banner fundido con el cuerpo del
+ * diseño de los ejemplos. Devuelve `null` si no se puede componer (sin fuente,
+ * sin sharp...), y quien llama usa entonces el banner de siempre.
  */
 export async function composeMenuCard(ctx) {
   const { config } = ctx
-  const { svg, width, bodyHeight, bannerHeight } = await buildCardSvg(ctx)
+  const { svg, width, height, bannerHeight } = await buildCardSvg(ctx)
   const key = createHash('sha1').update(svg).digest('hex')
   if (cardCache.has(key)) return cardCache.get(key)
 
@@ -408,8 +383,8 @@ export async function composeMenuCard(ctx) {
   }
 
   const card = await base
-    .extend({ bottom: bodyHeight, background: BODY_BACKGROUND })
-    .composite([{ input: Buffer.from(svg), top: bannerHeight, left: 0 }])
+    .extend({ bottom: height - bannerHeight, background: BODY_BACKGROUND })
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
     .jpeg({ quality: 92 })
     .toBuffer()
 
