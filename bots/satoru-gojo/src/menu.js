@@ -15,6 +15,15 @@ export const BUTTON_STYLE_HINTS = {
   carousel: 'una tarjeta por botón, cada una con su banner',
 }
 
+/** Glifo de cada botón del menú: lo dibuja WhatsApp en sus filas verticales. */
+export const BUTTON_GLYPHS = {
+  menufull: '☰',
+  support: '✦',
+  fastcommand: '☆',
+}
+
+export const buttonGlyph = button => BUTTON_GLYPHS[button?.command] || '☰'
+
 export const MENU_ROW_PREFIX = 'vlrs_menu_'
 
 export const CATEGORIES = {

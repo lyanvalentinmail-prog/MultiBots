@@ -141,37 +141,42 @@ function wireBanner(message) {
 const labelsOf = message => wireButtons(message).map(({ text, id }) => ({ text, id }))
 
 const OUR_BUTTONS = [
-  { text: 'Menu', id: 'menu_full' },
-  { text: 'Fast command', id: 'menu_fast' },
-  { text: 'Support', id: 'menu_support' },
+  { text: '☰ Menu', id: 'menu_full' },
+  { text: '☆ Fast command', id: 'menu_fast' },
+  { text: '✦ Support', id: 'menu_support' },
 ]
 
-test('el menú usa por defecto los 3 botones en vertical (native flow), separados', async () => {
+test('el menú son 2 mensajes: la tarjeta y los 3 botones en vertical (native flow)', async () => {
   const ctx = menuContext(noHtml)
   assert.equal(ctx.config.menu.buttonStyle, 'native', 'el estilo por defecto es native')
   await deliverMenu(ctx)
-  assert.equal(ctx.sock.sent.length, 1)
-  const message = ctx.sock.sent[0].message
+  assert.equal(ctx.sock.sent.length, 2, 'tarjeta-imagen y mensaje de botones')
+  const card = ctx.sock.sent[0].message
+  assert.ok(card.imageMessage, 'el primer mensaje es la tarjeta como imagen')
+  assert.ok(!card.imageMessage.caption, 'sin caption: el texto vive en la imagen')
+  const message = ctx.sock.sent[1].message
   assert.equal(wireKind(message), 'interactiveMessage')
   const flow = message.interactiveMessage?.nativeFlowMessage
   assert.ok(flow, 'native flow: una fila por botón, en vertical y separadas')
   assert.ok(wireButtons(message).every(button => button.name === 'quick_reply'), 'son quick_reply')
   assert.deepEqual(labelsOf(message), OUR_BUTTONS, 'los 3 botones, uno por fila')
-  assert.ok(wireBanner(message), 'la cabecera lleva la tarjeta')
-  assert.match(message.interactiveMessage.body.text, /\*Satoru gojo\*/)
-  assert.match(message.interactiveMessage.body.text, /¡Buenos días! ☀️ Lyann/)
+  assert.ok(wireBanner(message), 'la cabecera lleva el banner')
+  assert.equal(message.interactiveMessage.header.title, 'Satoru Gojo')
+  assert.equal(message.interactiveMessage.header.subtitle, '¡Buenos días! ☀️ Lyann')
   assert.match(message.interactiveMessage.body.text, /Selecciona el menu que necesites/)
+  assert.equal(message.interactiveMessage.footer.text, 'Ⓒ Satoru gojo')
 })
 
 test('con buttonStyle template vuelve la plantilla hidratada con sus chips', async () => {
   const ctx = menuContext({ config: { menu: { buttonStyle: 'template', htmlEnabled: false } } })
   await deliverMenu(ctx)
-  const message = ctx.sock.sent[0].message
+  const message = ctx.sock.sent[1].message
   assert.equal(wireKind(message), 'templateMessage')
   const template = message.templateMessage.hydratedFourRowTemplate
   assert.deepEqual(labelsOf(message), OUR_BUTTONS, 'los 3 botones de siempre')
   assert.ok(template.hydratedButtons.every(button => button.quickReplyButton), 'son quickReplyButton')
   assert.ok(wireBanner(message), 'la plantilla lleva el banner')
+  assert.equal(template.hydratedTitleText, 'Satoru Gojo')
   assert.equal(template.hydratedFooterText, 'Ⓒ Satoru gojo')
 })
 
@@ -186,7 +191,7 @@ test('cada tipo de botones del menú genera su mensaje y conserva los 3 botones'
   for (const style of BUTTON_STYLES) {
     const ctx = menuContext({ config: { menu: { buttonStyle: style, htmlEnabled: false } } })
     await deliverMenu(ctx)
-    const message = ctx.sock.sent[0].message
+    const message = ctx.sock.sent[1].message
     assert.equal(wireKind(message), expected[style], `estilo ${style}`)
     assert.deepEqual(labelsOf(message), OUR_BUTTONS, `estilo ${style}: botones`)
     assert.ok(wireBanner(message), `estilo ${style}: banner`)
@@ -209,8 +214,8 @@ test('un estilo desconocido cae a native en vez de romper el menú', async () =>
   const ctx = menuContext(noHtml)
   ctx.config.menu.buttonStyle = 'invento'
   await deliverMenu(ctx)
-  assert.equal(wireKind(ctx.sock.sent[0].message), 'interactiveMessage')
-  assert.deepEqual(labelsOf(ctx.sock.sent[0].message), OUR_BUTTONS)
+  assert.equal(wireKind(ctx.sock.sent[1].message), 'interactiveMessage')
+  assert.deepEqual(labelsOf(ctx.sock.sent[1].message), OUR_BUTTONS)
 })
 
 test('si el menú interactivo falla, cae al banner + texto con los 3 comandos', async () => {
