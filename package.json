@@ -1,13 +1,17 @@
 {
   "name": "multibots",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Colección de bots de WhatsApp (Baileys) que corren en Termux: Satoru Gojo.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "satoru": "node bots/satoru-gojo/index.js"
+    "satoru": "node bots/satoru-gojo/index.js",
+    "pairing": "node bots/satoru-gojo/index.js --pairing",
+    "qr": "node bots/satoru-gojo/index.js --qr",
+    "reset": "node bots/satoru-gojo/index.js --reset",
+    "doctor": "node bots/satoru-gojo/lib/runtime.js"
   },
-  "keywords": ["whatsapp", "baileys", "termux", "bot", "satoru-gojo"],
+  "keywords": ["whatsapp", "baileys", "termux", "bot", "satoru-gojo", "pairing-code"],
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.16",

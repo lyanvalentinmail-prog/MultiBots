@@ -31,14 +31,56 @@ npm start
 
 # Ejecutar directo a Satoru Gojo
 npm run satoru
+
+# Ir directo al pairing code / al QR / borrar la sesión
+npm run pairing
+npm run pairing -- 59896719709     # sin que te pregunte el número
+npm run qr
+npm run reset
+
+# Diagnóstico (Node, Web Crypto, Baileys, estado de la sesión)
+npm run doctor
 ```
 
 ### Autenticación
 La primera vez, el bot te preguntará el método:
-1. **Pairing code (recomendado para Termux)** — introduce tu número con código de país sin `+` (ej: `59896719709`). El bot te dará un código de 8 dígitos que debes pegar en *WhatsApp → Dispositivos vinculados → Vincular con código*.
+1. **Pairing code (recomendado para Termux)** — introduce tu número con código de país sin `+` (ej: `59896719709`). El bot te dará un código de 8 dígitos que debes pegar en *WhatsApp → Dispositivos vinculados → Vincular un dispositivo → Vincular con código de teléfono*. Caduca a los ~60 segundos; si expira, el bot pide uno nuevo automáticamente (hasta 3 intentos) y después cambia solo al método QR.
 2. **Código QR** — muestra un QR para escanear como normalmente se hace.
 
-La sesión se guarda en `bots/satoru-gojo/auth/` para no volver a iniciar sesión. Si quieres re-vincular, borra esa carpeta.
+La sesión se guarda en `bots/satoru-gojo/auth/` para no volver a iniciar sesión. Si quieres re-vincular, usa `npm run reset` o borra esa carpeta.
+
+### 🔧 Solución de problemas con el pairing code en Termux
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `TypeError: Cannot destructure property 'subtle' of 'globalThis.crypto'` o `ReferenceError: crypto is not defined` | Node 18 o inferior: Baileys usa la Web Crypto **global**, que sólo existe por defecto desde Node 19 | Ya está parcheado en `lib/runtime.js`. Aun así, lo ideal es `pkg install nodejs` (Node 20+) |
+| Escribes el número y no pasa nada / se queda colgado en `Número:` | El proceso padre (`npm start`) tenía su `readline` abierto y le robaba las teclas al bot | Corregido: el padre libera stdin antes de lanzar el bot. Alternativa sin menú: `npm run pairing -- <número>` |
+| Al reiniciar dice *"Sesión guardada detectada"* y entra en bucle sin pedir el código | Un intento de pairing fallido deja `creds.json` con `registered: false`, y la carpeta `auth/` ya no está vacía | Corregido: sólo se considera válida una sesión con `registered: true` y las claves completas; si no, se limpia sola. Manual: `npm run reset` |
+| Se queda colgado al arrancar antes de mostrar nada | `fetchLatestBaileysVersion()` consulta `raw.githubusercontent.com` sin timeout (a menudo lento/bloqueado) | Corregido: timeout de 5 s y respaldo a la versión integrada en Baileys |
+| `El código caduca` una y otra vez | Tardaste más de ~60 s en introducirlo, o el número no es el de WhatsApp | Corregido: reintenta solo y cae a QR tras 3 fallos. Revisa el número con `npm run doctor` |
+| El número tiene `0` delante (ej. `0598...`) | Formato local en vez de internacional | Corregido: se eliminan los ceros de troncal y el prefijo `00`, y avisa si a un `54`/`52` le falta el `9`/`1` del móvil |
+| Cada reconexión consume más memoria | Se creaba un socket nuevo sin cerrar el anterior | Corregido: se cierra el socket anterior y la reconexión usa backoff (2 s → 30 s) |
+
+Comprobación rápida:
+
+```bash
+npm run doctor
+```
+
+Salida esperada:
+
+```
+🩺 MultiBots — diagnóstico de pairing code
+
+  Node:            v22.x.x
+  Plataforma:      linux (Termux detectado)
+  Web Crypto nativa (Node>=19): sí
+  PBKDF2/subtle (lo que usa Baileys): ✅ OK
+  Baileys:         v6.7.24
+  Sesión: ✅ válida (59896719709)
+
+✅ Todo listo para usar el pairing code.
+```
 
 ## Comandos del bot Satoru Gojo
 Envía `menu` (también válido `.menu`) en cualquier chat y el bot responderá:
@@ -57,14 +99,20 @@ Otros comandos rápidos: `.ping`, `.id`, `.infobot`, `.owner`.
 
 ```
 MultiBots/
-├── index.js                   # Selector interactivo de bots
+├── index.js                   # Selector interactivo de bots (libera stdin antes de lanzar el bot)
 ├── package.json
-├── install_termux.sh        # Instalador automático para Termux
+├── install_termux.sh        # Instalador automático para Termux + verificación
 └── bots/
     └── satoru-gojo/
-        ├── index.js         # Conexión a WhatsApp (QR + Pairing code)
+        ├── index.js         # Conexión a WhatsApp (QR + Pairing code, reintentos y respaldo)
         ├── config.js        # Configuración (nombre, owner, API, mensajes)
         ├── message-handler.js # Lógica de comandos y menú
+        ├── lib/
+        │   ├── runtime.js   # 🩹 Parche Web Crypto (Node 18/Termux), sesión, teléfono, `npm run doctor`
+        │   ├── database.js
+        │   ├── helpers.js
+        │   ├── media.js
+        │   └── velirius.js
         ├── commands/        # 📂 Carpeta de comandos (organizados por categoría)
         │   ├── index.js     # Punto de entrada (re-exporta loader)
         │   ├── loader.js    # Loader automático: detecta y registra comandos
@@ -143,6 +191,7 @@ No necesitas importar nada más: el loader lo detecta automáticamente al reinic
 
 ### Helpers disponibles
 En `bots/satoru-gojo/lib/`:
+- `runtime.js` — `patchWebCrypto()` (fix del pairing code en Node 18/Termux), `verifyPairingCrypto()`, `nodeInfo()`, `normalizePhone(raw)`, `sessionState(authDir)`, `clearSession(authDir)`. Ejecutable como diagnóstico: `npm run doctor`
 - `database.js` — `getUser(jid)`, `getGroup(jid)`, `db`, `save()` para persistencia
 - `helpers.js` — `isOwner`, `isAdmin(sock,jid,participant)`, `isGroup`, `rand(min,max)`, `pick(array)`, `formatTime(ms)`
 - `media.js` — `downloadMsg(msg)`, `sendTextSticker(sock,jid,text,type)`, `sendImageAsSticker(...)`
