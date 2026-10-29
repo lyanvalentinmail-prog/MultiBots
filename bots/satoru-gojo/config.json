@@ -40,7 +40,11 @@
         "label": "Support",
         "command": "support"
       }
-    ]
+    ],
+    "htmlEnabled": true,
+    "htmlTemplate": "./assets/menu.html",
+    "buttonStyle": "template",
+    "optionsText": "☾ Selecciona una opción"
   },
   "api": {
     "baseUrl": "https://velirius-api-sd8u.vercel.app",

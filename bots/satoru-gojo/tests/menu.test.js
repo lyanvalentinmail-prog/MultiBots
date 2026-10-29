@@ -42,11 +42,11 @@ const ownerContext = {
   isGroup: true,
 }
 
-test('carga 222 comandos, 405 alias y todas las entradas del menú', () => {
-  assert.equal(registry.count, 222)
-  assert.equal(registry.commands.size, 405)
+test('carga 225 comandos, 412 alias y todas las entradas del menú', () => {
+  assert.equal(registry.count, 225)
+  assert.equal(registry.commands.size, 412)
   for (const command of [
-    'menu', 'menufull', 'fastcommand', 'support', 'play', 'tiktok', 'stt', 'bratvideo',
+    'menu', 'menufull', 'fastcommand', 'support', 'menuhtml', 'menustyle', 'setmenuhtml', 'play', 'tiktok', 'stt', 'bratvideo',
     'attp', 'emojimix', 'sticker', 'pack', 'catch', 'w', 'claim', 'balance', 'perfil',
     'mod', 'sban', 'warn', 'mute', 'fijar', 'photogp', 'antilink', 'antipalabra', 'qr',
     'code', 'bots', 'dado', 'adivinanza', 'pescar', 'miner', 'ppt', 'ahorcado', 'prestamo',
@@ -107,7 +107,7 @@ test('el menú completo conserva el listado por categorías y nuestro copyright'
   for (const removed of ['.waifu', '.neko', '.maid']) assert.ok(!full.includes(removed))
   const categories = pluginsByCategory(ownerContext)
   assert.equal(categories.length, 18)
-  assert.equal(categories.reduce((total, category) => total + category.entries.length, 0), 192)
+  assert.equal(categories.reduce((total, category) => total + category.entries.length, 0), 196)
   assert.match(buildCommandsText(ownerContext), /Ⓒ Satoru gojo/)
 })
 

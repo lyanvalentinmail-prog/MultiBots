@@ -1,5 +1,7 @@
 import { access, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { BUTTON_STYLES, BUTTON_STYLE_HINTS } from '../src/menu.js'
+import { deliverMenu } from '../src/interactive.js'
 import { cleanNumber, isHttpUrl, normalizeCommand } from '../src/utils/format.js'
 import { requestedTargets } from '../src/utils/group.js'
 import { isLid } from '../src/utils/jid.js'
@@ -56,6 +58,24 @@ export default [
     if (!mode) return ctx.reply(`☾ Uso: ${ctx.usedPrefix}setmenu interactivo|lista|texto`)
     await ctx.configStore.update(config => { config.menuMode = mode })
     await ctx.reply(`☾ Modo de menú actualizado a *${mode}*.`)
+  }),
+  ownerCommand(['menustyle', 'estilomenu', 'tipobotones'], 'Prueba y fija el tipo de botones del menú.', '<native|template|buttons|sheet|carousel>', async ctx => {
+    const style = normalizeCommand(ctx.text)
+    if (!BUTTON_STYLES.includes(style)) {
+      const current = ctx.config.menu?.buttonStyle || 'native'
+      const list = BUTTON_STYLES.map(item => `> *${item}*${item === current ? ' _(actual)_' : ''} — ${BUTTON_STYLE_HINTS[item]}`).join('\n')
+      return ctx.reply(`☾ *Tipos de botones del menú*\n\n${list}\n\nUso: ${ctx.usedPrefix}menustyle <tipo>\nAl elegir uno se guarda y se envía el menú para que lo veas.`)
+    }
+    await ctx.configStore.update(config => { config.menu.buttonStyle = style })
+    // deliverMenu lee el estilo de la configuración, así que se le pasa la ya actualizada
+    await deliverMenu({ ...ctx, config: ctx.configStore.data })
+    await ctx.reply(`☾ Tipo de botones: *${style}* — ${BUTTON_STYLE_HINTS[style]}\n\nSi tu WhatsApp no los dibuja, prueba otro con ${ctx.usedPrefix}menustyle native.`)
+  }),
+  ownerCommand(['setmenuhtml', 'htmlmenu'], 'Activa o desactiva la tarjeta HTML que se adjunta al menú.', '<on|off>', async ctx => {
+    const value = normalizeCommand(ctx.text)
+    if (!['on', 'off'].includes(value)) return ctx.reply(`☾ Uso: ${ctx.usedPrefix}setmenuhtml on|off`)
+    await ctx.configStore.update(config => { config.menu.htmlEnabled = value === 'on' })
+    await ctx.reply(`☾ Tarjeta HTML del menú: *${value === 'on' ? 'activada' : 'desactivada'}*.`)
   }),
   ownerCommand(['setmode', 'modo'], 'Activa el modo público o privado.', '<public|self>', async ctx => {
     const aliases = { publico: 'public', public: 'public', privado: 'self', private: 'self', self: 'self' }

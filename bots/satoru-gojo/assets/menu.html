@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{title} · Menú</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6edf3;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: linear-gradient(180deg, #111a23 0%, #0b0f14 100%);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  .banner {
+    width: 100%;
+    height: 280px;
+    background: #22c55e url('{banner}') center/cover no-repeat;
+    position: relative;
+  }
+  .banner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(11,15,20,.95) 100%);
+  }
+  .content { padding: 24px; }
+  h1 {
+    font-size: 28px;
+    margin-bottom: 10px;
+    color: #a7f3d0;
+  }
+  .greeting { font-size: 20px; margin-bottom: 18px; }
+  .subtitle { font-size: 16px; margin-bottom: 8px; opacity: .9; }
+  .stats {
+    font-size: 12px;
+    color: #7d8590;
+    margin-bottom: 16px;
+  }
+  .copyright {
+    font-size: 11px;
+    color: #7d8590;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  /* Los tres botones van separados: uno por fila, con su propio borde y espacio. */
+  .buttons { display: flex; flex-direction: column; gap: 12px; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 20px;
+    background: #1f2937;
+    color: #fff;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all .2s;
+  }
+  .btn small { font-size: 12px; font-weight: 400; color: #9ca3af; }
+  .btn:hover { background: #22c55e; border-color: #22c55e; color: #0b0f14; }
+  .btn:hover small { color: #052e16; }
+  .btn.support { border-color: #3b82f6; color: #60a5fa; }
+  .btn.support:hover { background: #3b82f6; border-color: #3b82f6; color: #0b0f14; }
+  .foot {
+    margin-top: 22px;
+    font-size: 11px;
+    color: #4b5563;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="banner"></div>
+    <div class="content">
+      <h1>{title}</h1>
+      <p class="greeting">{greeting} {usuario}</p>
+      <p class="subtitle">{selectMenu}</p>
+      <p class="stats">{stats}</p>
+      <p class="copyright">{copyright}</p>
+      <div class="buttons">
+{buttons}
+      </div>
+      <p class="foot">{botName} · {year}</p>
+    </div>
+  </div>
+</body>
+</html>

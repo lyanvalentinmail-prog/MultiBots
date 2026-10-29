@@ -28,9 +28,13 @@ for (const file of files) {
 const config = new ConfigStore()
 await config.init({ watch: false })
 if (!isHttpUrl(config.data.banner)) await access(resolveBot(config.data.banner))
+// La tarjeta HTML del menú es opcional, pero si está activada la plantilla debe existir
+if (config.data.menu?.htmlEnabled !== false) {
+  await access(resolveBot(config.data.menu?.htmlTemplate || './assets/menu.html'))
+}
 const registry = await new PluginRegistry().load()
 await config.close()
 
 console.log(`✔ Sintaxis correcta: ${files.length} archivos`)
-console.log(`✔ Configuración válida y banner disponible`)
+console.log(`✔ Configuración válida, banner y plantilla HTML disponibles`)
 console.log(`✔ Plugins válidos: ${registry.count} comandos (${registry.commands.size} alias)`)

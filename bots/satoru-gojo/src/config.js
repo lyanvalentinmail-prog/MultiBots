@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises'
 import { watch } from 'node:fs'
 import path from 'node:path'
+import { BUTTON_STYLES } from './menu.js'
 import { cleanNumber } from './utils/format.js'
 import { resolveBot } from './utils/paths.js'
 
@@ -32,6 +33,12 @@ export const DEFAULT_CONFIG = {
       { id: 'menu_fast', label: 'Fast command', command: 'fastcommand' },
       { id: 'menu_support', label: 'Support', command: 'support' },
     ],
+    // Tarjeta HTML que se adjunta al menú (assets/menu.html)
+    htmlEnabled: true,
+    htmlTemplate: './assets/menu.html',
+    // Tipo de botones: native | template | buttons | sheet | carousel
+    buttonStyle: 'template',
+    optionsText: '☾ Selecciona una opción',
   },
   api: {
     baseUrl: 'https://velirius-api-sd8u.vercel.app',
@@ -123,6 +130,14 @@ export function normalizeConfig(input = {}) {
     if (!id || !label || !command) throw new Error('menu.buttons necesita id, label y command')
     return { id, label: label.slice(0, 60), command }
   })
+
+  // Tarjeta HTML y tipo de botones del menú
+  config.menu.htmlEnabled = config.menu.htmlEnabled !== false
+  config.menu.htmlTemplate = String(config.menu.htmlTemplate || defaults.menu.htmlTemplate).trim().slice(0, 200)
+  if (!BUTTON_STYLES.includes(config.menu.buttonStyle)) {
+    throw new Error(`menu.buttonStyle debe ser uno de: ${BUTTON_STYLES.join(', ')}`)
+  }
+  config.menu.optionsText = String(config.menu.optionsText || defaults.menu.optionsText).slice(0, 60)
 
   let apiUrl
   try {

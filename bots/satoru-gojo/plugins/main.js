@@ -1,5 +1,5 @@
 import os from 'node:os'
-import { deliverMenu } from '../src/interactive.js'
+import { deliverMenu, sendMenuHtml } from '../src/interactive.js'
 import {
   buildCommandsText,
   buildFastCommandText,
@@ -7,7 +7,17 @@ import {
   buildSupportText,
   findCategory,
 } from '../src/menu.js'
-import { formatBytes, formatUptime, truncate } from '../src/utils/format.js'
+import { formatBytes, formatUptime, normalizeCommand, truncate } from '../src/utils/format.js'
+
+/** Tarjeta HTML del menú (assets/menu.html rellena con el banner y los botones). */
+async function sendMenuHtmlCommand(ctx) {
+  try {
+    await sendMenuHtml(ctx)
+    return ctx.react('📄')
+  } catch (error) {
+    return ctx.reply(`☾ No se pudo generar el menú HTML: ${error.message}`)
+  }
+}
 
 export default [
   {
@@ -20,11 +30,21 @@ export default [
     needsGroupMetadata: true,
     async execute(ctx) {
       if (ctx.text) {
+        // ".menu html" entrega solo la tarjeta HTML
+        if (normalizeCommand(ctx.text) === 'html') return sendMenuHtmlCommand(ctx)
         const category = findCategory(ctx, ctx.text)
         if (category) return ctx.reply(buildSelectedCategory(ctx, category))
         return ctx.reply(`☾ Categoría no encontrada. Usa ${ctx.usedPrefix}menu para ver las disponibles.`)
       }
       return deliverMenu(ctx)
+    },
+  },
+  {
+    commands: ['menuhtml', 'html'],
+    category: 'general',
+    description: 'Envía el menú como tarjeta HTML.',
+    async execute(ctx) {
+      return sendMenuHtmlCommand(ctx)
     },
   },
   {
