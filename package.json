@@ -1,15 +1,21 @@
 {
   "name": "multibots",
-  "version": "1.0.2",
-  "description": "Colección de bots de WhatsApp (Baileys) que corren en Termux: Satoru Gojo.",
+  "version": "2.0.0",
+  "description": "Colección de bots modulares de WhatsApp (Baileys) para Termux: Satoru Gojo.",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "satoru": "node bots/satoru-gojo/index.js",
+    "satoru": "node bots/satoru-gojo/scripts/ensure-sharp.js && node bots/satoru-gojo/index.js",
+    "satoru:raw": "node bots/satoru-gojo/index.js",
     "pairing": "node bots/satoru-gojo/index.js --pairing",
     "qr": "node bots/satoru-gojo/index.js --qr",
-    "reset": "node bots/satoru-gojo/index.js --reset",
-    "doctor": "node bots/satoru-gojo/lib/runtime.js"
+    "dev": "node bots/satoru-gojo/scripts/ensure-sharp.js && node --watch bots/satoru-gojo/index.js",
+    "setup": "node bots/satoru-gojo/scripts/configure.js",
+    "fix:sharp": "node bots/satoru-gojo/scripts/ensure-sharp.js",
+    "check": "node --check index.js && node bots/satoru-gojo/scripts/check.js",
+    "doctor": "node --check index.js && node bots/satoru-gojo/scripts/check.js",
+    "test": "node --test \"bots/satoru-gojo/tests/*.test.js\""
   },
   "keywords": [
     "whatsapp",
@@ -17,17 +23,24 @@
     "termux",
     "bot",
     "satoru-gojo",
-    "pairing-code"
+    "pairing-code",
+    "plugins"
   ],
   "license": "MIT",
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.16",
-    "axios": "^1.7.7",
-    "cheerio": "^1.0.0",
-    "pino": "^9.5.0",
-    "qrcode-terminal": "^0.12.0"
+    "@hapi/boom": "^10.0.1",
+    "@itsliaaa/baileys": "0.3.18-final",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "node-webpmux": "3.2.1",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "sharp": "0.35.5"
+  },
+  "optionalDependencies": {
+    "@img/sharp-wasm32": "0.35.5"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.9.0"
   }
 }

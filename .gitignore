@@ -1,8 +1,26 @@
 node_modules/
+
+# Sesiones / credenciales (por bot)
+bots/*/sessions/
 bots/*/auth/
 bots/*/auth*/
-*.log
-.DS_Store
-npm-debug.log*
-.env
+
+# Datos persistidos (por bot)
+bots/*/data/*.json
+bots/*/data/*.json.tmp
 database.json
+
+# Artefactos
+bots/*/logs/
+bots/*/tmp/
+bots/*/assets/banner-custom.*
+logs/
+tmp/
+*.log
+npm-debug.log*
+
+# Entorno
+.env
+.env.*
+
+.DS_Store

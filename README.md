@@ -1,227 +1,277 @@
 # MultiBots
 
-Colección de bots de WhatsApp construidos con [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys), preparados para correr en **Termux** (Android). Soportan autenticación por **código QR** y por **pairing code** (código de 8 dígitos, sin escanear).
+Colección de bots modulares de WhatsApp construidos con [Baileys](https://github.com/WhiskeySockets/Baileys), preparados para correr en **Termux** (Android). Autenticación por **pairing code** (8 dígitos, sin escanear) o **código QR**.
+
+Cada bot es autónomo dentro de `bots/<nombre>/` y sigue la misma arquitectura: motor en `src/`, funcionalidad en `plugins/`, configuración en `config.json` y tests en `tests/`.
 
 ## Bots incluidos
 
-- 🌀 **Satoru Gojo** — `bots/satoru-gojo/`
+- 🌀 **Satoru Gojo** — `bots/satoru-gojo/` · 222 plugins · 405 alias · 18 categorías
 
-## Instalación en Termux
+## Requisitos
+
+- **Node.js 20.9 o superior** (el motor usa la Web Crypto global y `--watch`)
+- FFmpeg (para stickers de video y notas de voz)
+
+En Termux:
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install nodejs git -y
-git clone <tu-repo>
-cd MultiBots
-npm install
+pkg install -y nodejs git nano ffmpeg
 ```
 
-## Instalación rápida (Termux)
-También puedes usar el script automático:
+## Instalación
+
 ```bash
-chmod +x install_termux.sh
-./install_termux.sh
+git clone <tu-repo> MultiBots
+cd MultiBots
+npm ci            # o: npm install
+
+# o todo de una vez (Termux):
+chmod +x install_termux.sh && ./install_termux.sh
 ```
+
+El instalador verifica la versión de Node, prepara **sharp** (nativo o WebAssembly en Termux) y ejecuta `npm run check`.
 
 ## Ejecutar
 
 ```bash
-# Menú interactivo (elige qué bot correr)
-npm start
-
-# Ejecutar directo a Satoru Gojo
-npm run satoru
-
-# Ir directo al pairing code / al QR / borrar la sesión
-npm run pairing
-npm run pairing -- 59896719709     # sin que te pregunte el número
-npm run qr
-npm run reset
-
-# Diagnóstico (Node, Web Crypto, Baileys, estado de la sesión)
-npm run doctor
+npm start                                  # menú de bots: eliges cuál arrancar
+npm run satoru                             # Satoru Gojo (con prepare-sharp)
+npm run satoru:raw                         # sin preparar sharp
+npm run dev                                # con --watch (reinicia al editar)
+./bots/satoru-gojo/start.sh                # bucle con reinicio automático
 ```
 
-### Autenticación
-La primera vez, el bot te preguntará el método:
-1. **Pairing code (recomendado para Termux)** — introduce tu número con código de país sin `+` (ej: `59896719709`). El bot te dará un código de 8 dígitos que debes pegar en *WhatsApp → Dispositivos vinculados → Vincular un dispositivo → Vincular con código de teléfono*. Caduca a los ~60 segundos; si expira, el bot pide uno nuevo automáticamente (hasta 3 intentos) y después cambia solo al método QR.
-2. **Código QR** — muestra un QR para escanear como normalmente se hace.
-
-La sesión se guarda en `bots/satoru-gojo/auth/` para no volver a iniciar sesión. Si quieres re-vincular, usa `npm run reset` o borra esa carpeta.
-
-### 🔧 Solución de problemas con el pairing code en Termux
-
-| Síntoma | Causa | Solución |
-|---|---|---|
-| `TypeError: Cannot destructure property 'subtle' of 'globalThis.crypto'` o `ReferenceError: crypto is not defined` | Node 18 o inferior: Baileys usa la Web Crypto **global**, que sólo existe por defecto desde Node 19 | Ya está parcheado en `lib/runtime.js`. Aun así, lo ideal es `pkg install nodejs` (Node 20+) |
-| Escribes el número y no pasa nada / se queda colgado en `Número:` | El proceso padre (`npm start`) tenía su `readline` abierto y le robaba las teclas al bot | Corregido: el padre libera stdin antes de lanzar el bot. Alternativa sin menú: `npm run pairing -- <número>` |
-| Al reiniciar dice *"Sesión guardada detectada"* y entra en bucle sin pedir el código | Un intento de pairing fallido deja `creds.json` con `registered: false`, y la carpeta `auth/` ya no está vacía | Corregido: sólo se considera válida una sesión con `registered: true` y las claves completas; si no, se limpia sola. Manual: `npm run reset` |
-| Se queda colgado al arrancar antes de mostrar nada | `fetchLatestBaileysVersion()` consulta `raw.githubusercontent.com` sin timeout (a menudo lento/bloqueado) | Corregido: timeout de 5 s y respaldo a la versión integrada en Baileys |
-| `El código caduca` una y otra vez | Tardaste más de ~60 s en introducirlo, o el número no es el de WhatsApp | Corregido: reintenta solo y cae a QR tras 3 fallos. Revisa el número con `npm run doctor` |
-| El número tiene `0` delante (ej. `0598...`) | Formato local en vez de internacional | Corregido: se eliminan los ceros de troncal y el prefijo `00`, y avisa si a un `54`/`52` le falta el `9`/`1` del móvil |
-| Cada reconexión consume más memoria | Se creaba un socket nuevo sin cerrar el anterior | Corregido: se cierra el socket anterior y la reconexión usa backoff (2 s → 30 s) |
-
-Comprobación rápida:
+### Vinculación con WhatsApp
 
 ```bash
-npm run doctor
+npm run pairing -- --phone=59896719709     # 🔢 código de 8 dígitos (recomendado en Termux)
+npm run qr                                 # 📷 escanear QR
+npm start                                  # te pregunta el método
+PAIRING_NUMBER=59896719709 npm run pairing # por variable de entorno
 ```
 
-Salida esperada:
+Con el pairing code: *WhatsApp → ⋮ → Dispositivos vinculados → Vincular un dispositivo → **Vincular con código de teléfono*** y escribes el código. Caduca a los ~60 s.
 
-```
-🩺 MultiBots — diagnóstico de pairing code
+La sesión queda en `bots/<bot>/sessions/`. Para volver a vincular: `.delsession` (owner, desde WhatsApp) o borra esa carpeta.
 
-  Node:            v22.x.x
-  Plataforma:      linux (Termux detectado)
-  Web Crypto nativa (Node>=19): sí
-  PBKDF2/subtle (lo que usa Baileys): ✅ OK
-  Baileys:         v6.7.24
-  Sesión: ✅ válida (59896719709)
+### Utilidades
 
-✅ Todo listo para usar el pairing code.
+```bash
+npm run setup      # asistente interactivo para config.json
+npm run check      # sintaxis + config válida + banner + plugins (alias: npm run doctor)
+npm run fix:sharp  # reintenta preparar sharp
+npm test           # 79 tests (node --test)
 ```
 
-## Comandos del bot Satoru Gojo
-Envía `menu` (también válido `.menu`, `!menu`, `#menu`, `/menu`) en cualquier chat y el bot responderá:
-- 🖼️ Imagen de Satoru Gojo con el título **"Satoru gojo"**
-- Saludo: **¡Buenos días! ☀️ {usuario}**
-- Texto: **Selecciona el menu que necesites**
-- Copyright gris: **Ⓒ Satoru gojo**
-- Tres botones separados:
-  - **Menu** → muestra la lista completa de comandos (General, Owners, Admins, Antis, Sub bot, RPG, Pokémon, Perfil, Tops, Búsquedas, Descargas, Adicionales, Stickers, Diversión, Canvas, Imágenes)
-  - **Fast command** → lista rápida de comandos frecuentes
-  - **Support** → envía el número `59896719709` con enlace directo a WhatsApp
+`config.json` se **recarga solo** al editarlo, con el bot en marcha.
 
-Los botones se envían como `interactiveMessage` (native flow). WhatsApp los muestra de forma
-intermitente según la cuenta, así que si no llegan el bot envía **automáticamente** el mismo menú
-en texto con los tres comandos equivalentes, que funcionan siempre:
+## Nuestro menú
 
-| Botón | Comando equivalente |
-|---|---|
-| Menu | `.menufull` |
-| Fast command | `.fastcommand` |
-| Support | `.support` |
+Envía `menu` (también `.menu`, `!menu`, `#menu`, `/menu`) y el bot responde con:
 
-Otros comandos rápidos: `.ping`, `.id`, `.infobot`, `.owner`.
+- 🖼️ El banner de Satoru Gojo (`assets/banner.jpg`)
+- Título **\*Satoru gojo\***
+- Saludo **¡Buenos días! ☀️ {usuario}**
+- **Selecciona el menu que necesites**
+- Copyright **Ⓒ Satoru gojo**
+- Tres botones:
 
-### Cómo se reconocen los comandos
-- Prefijos aceptados: `.`, `!`, `#`, `/` (el principal es `.`, configurable en `config.js`).
-- La coincidencia es por **palabra completa**: `sol` no dispara `.s`, ni `identidad` dispara `.id`.
-- Los mensajes **sin prefijo no disparan nada**, salvo los marcados con `noPrefix: true` (`menu`).
-- Los comandos también funcionan como **leyenda de una imagen o video** (`.sticker` sobre una foto),
-  y dentro de `ephemeralMessage` / `viewOnceMessage` (grupos con mensajes temporales).
-- Entre varios candidatos gana el patrón más largo (`bot on` antes que `bot`).
+| Botón | Comando equivalente | Qué hace |
+|---|---|---|
+| **Menu** | `.menufull` | Lista completa de comandos por categoría |
+| **Fast command** | `.fastcommand` | Lista rápida de comandos frecuentes |
+| **Support** | `.support` | Número de soporte con enlace a WhatsApp |
 
-### ¿Los comandos no responden?
-1. Envía `.ping` — si no responde, mira la consola de Termux: ahora cualquier error del handler se
-   registra **y** se le avisa al usuario en el chat (antes se tragaba en silencio).
-2. `npm run doctor` — estado de Node/Baileys/sesión.
-3. Si el bot está apagado (`.bot off`), sólo responde al owner hasta que haga `.bot on`.
-4. En grupos, los admins y el owner no son censurados por los *antis*.
+Los botones viajan como `interactiveMessage` (native flow `quick_reply`). WhatsApp los muestra de forma intermitente según la cuenta, así que si fallan el bot envía **automáticamente** el banner más un menú de texto con esos tres comandos, que funcionan siempre.
+
+Todo el texto del menú es configurable en `config.json → menu`.
+
+Además:
+
+- `.menu <categoría>` muestra una categoría (ej. `.menu rpg`, `.menu descargas`).
+- Con `menuMode: "list"` (`.setmenu lista`) el menú usa la lista desplegable de categorías.
+- Con `menuMode: "text"` (`.setmenu texto`) siempre va en texto.
+
+### Reglas de reconocimiento
+
+- Prefijo por defecto `.` (configurable); los comandos **exigen prefijo**.
+- Excepción: `menu` y `help` funcionan sin prefijo (`noPrefix: true`).
+- Coincidencia por palabra completa: `sol` no dispara `.s`, `identidad` no dispara `.id`.
+- Gana el alias más largo (`bot on` antes que `bot`).
+- Los comandos también funcionan como **leyenda** de imagen/video y dentro de `ephemeralMessage` / `viewOnceMessage`.
+- Cooldown por usuario y comando (`cooldownMs`), salvo owner/mods.
 
 ## Estructura
 
 ```
 MultiBots/
-├── index.js                   # Selector interactivo de bots (libera stdin antes de lanzar el bot)
-├── package.json
-├── install_termux.sh        # Instalador automático para Termux + verificación
+├── index.js                     # Manager: elige el bot y lo lanza (libera stdin antes)
+├── package.json                 # ESM ("type": "module"), deps y scripts
+├── install_termux.sh            # Instalador para Termux
 └── bots/
     └── satoru-gojo/
-        ├── index.js         # Conexión a WhatsApp (QR + Pairing code, reintentos y respaldo)
-        ├── config.js        # Configuración (nombre, owner, API, mensajes)
-        ├── message-handler.js # Lógica de comandos y menú
-        ├── lib/
-        │   ├── runtime.js   # 🩹 Parche Web Crypto (Node 18/Termux), sesión, teléfono, `npm run doctor`
-        │   ├── database.js
-        │   ├── helpers.js
-        │   ├── media.js
-        │   └── velirius.js
-        ├── commands/        # 📂 Carpeta de comandos (organizados por categoría)
-        │   ├── index.js     # Punto de entrada (re-exporta loader)
-        │   ├── loader.js    # Loader automático: detecta y registra comandos
-        │   ├── general.js   # Comandos generales (.ping, .id, .infobot, .owner...)
-        │   ├── owners.js    # Comandos de dueño
-        │   ├── admins.js    # Comandos de admins de grupo
-        │   ├── antis.js     # Antilinks, antispam, etc.
-        │   ├── subbot.js    # Comandos de sub-bots
-        │   ├── rpg.js       # Juegos RPG (monedas, diario, pescar, banco...)
-        │   ├── pokemon.js   # Comandos de Pokémon
-        │   ├── perfil.js    # Perfil, cumpleaños, matrimonio
-        │   ├── tops.js      # Rankings
-        │   ├── busquedas.js # Google, wiki, YouTube...
-        │   ├── descargas.js # MP3, MP4, tiktok...
-        │   ├── adicionales.js # Notas, translate, tts, calculadora
-        │   ├── stickers.js  # Creador de stickers
-        │   ├── diversion.js # Ship, memes, tops divertidos
-        │   ├── canvas.js    # Edición de imágenes
-        │   └── imagenes.js  # Filtros (blur, glitch, pixel...)
-        └── assets/
-            ├── banner.jpg   # Imagen de Satoru Gojo
-            └── menu.html    # Plantilla HTML de referencia del menú
+        ├── index.js             # Entrada: vinculación (QR/pairing), socket, reconexión
+        ├── config.json          # Identidad, prefijo, owners, banner, menú, API
+        ├── start.sh             # Arranque con reinicio automático
+        ├── assets/
+        │   ├── banner.jpg       # Imagen del menú
+        │   └── characters.json  # Personajes del gacha
+        ├── plugins/             # ⬅ TODA la funcionalidad (22 archivos, 222 plugins, 405 alias)
+        │   ├── main.js          # (9) menu, menufull, fastcommand, support, ping, infobot, estadoapi, owner, id
+        │   ├── moderation.js    # (24) mod, sban, warn/delwarn/warnings, mute/delmute, fijar/desfijar,
+        │   │                    #      photogp, grupo, soloadmin, welcome + los 11 antis
+        │   ├── owner.js         # (13) setprefix, setbotname, setfooter, setbanner, setmenu, setmode,
+        │   │                    #      setautoread, setapi, addowner, delowner, reload, restart, config
+        │   ├── system.js        # (4) delsession, join, bot on/off/info, setlen
+        │   ├── subbots.js       # (3) qr, code, bots
+        │   ├── group.js         # (12) kick, add, promote, demote, open, close, setgroupname,
+        │   │                    #      setgroupdesc, tagall, delete, link, infogroup
+        │   ├── economy.js       # (10) balance, daily, work, transf, banco, unirsebank, change,
+        │   │                    #      deposit, withdraw, topcoins
+        │   ├── games.js         # (14) dado, adivinanza, pescar, miner, suerte, crimen, cazar, cofre,
+        │   │                    #      ppt, ahorcado, prestamo, pagar, robar, sorpresa
+        │   ├── gacha.js         # (2) w, claim
+        │   ├── characters.js    # (8) harem, vharem, darhr, vender, cancelarg, tiendag, comprarg, topharem
+        │   ├── pokemon.js       # (3) catch, pokedex, pokemonbattle
+        │   ├── profile.js       # (13) perfil, setdesc/setfav/setname/setage/setgenre/delgenre,
+        │   │                    #      setbirth/delbirth, birthdays, allbirthdays, marry, divorce
+        │   ├── search.js        # (5) google, yts, ttsearch, wiki, pinterest
+        │   ├── downloads.js     # (9) play, mp3, mp4, tiktok, tiktokaudio, facebook, instagram, pindl, letra
+        │   ├── reactions.js     # (26) hug, kiss, pat, slap, cuddle, wave, wink, blush, smile, happy,
+        │   │                    #      dance, cry, poke, tickle, highfive, handhold, nom, bite, bonk,
+        │   │                    #      baka, smug, laugh, shrug, sleep, think, thumbsup
+        │   ├── stickersmaker.js # (13) brat, bratvideo, bratestirado, bratanime, bratcoyote,
+        │   │                    #      bratpinguino, bratboy, attp, ttp, absolutecinema, bobesponja,
+        │   │                    #      sgay, emojimix
+        │   ├── stickerseditor.js# (4) sticker, toimg, tovid, pack
+        │   ├── canvas.js        # (20) quotly, iqc/iqcblue/iqcpink, messengerquote, profilenote, pov, x,
+        │   │                    #      cuentatiktok, storyreply, canvaimagen, laptop, pc, googleimg,
+        │   │                    #      searched, pokemoncard, ship, friendship, gaycard, resize
+        │   ├── effects.js       # (16) gay, invert, grayscale, blur, pixel, deepfry, sketch, swirl,
+        │   │                    #      liquify, glitch, rata, banana, arandano, pan, galletita, minions
+        │   ├── extras.js        # (6) nota, delnota, reveal, topactivos, topinactivos, meme
+        │   ├── fun.js           # (3) topgays, topotakus, topfemboys
+        │   └── tools.js         # (5) calc, traducir, tts, stt, morse
+        ├── src/                 # Motor (no se toca para añadir comandos)
+        │   ├── handler.js       # Dispatch: permisos, cooldown, antis, contexto
+        │   ├── plugins.js       # PluginRegistry: carga y valida plugins/
+        │   ├── menu.js          # 🔶 Nuestro menú: header, botones, fast, categorías
+        │   ├── interactive.js   # 🔶 Entrega del menú (botones + respaldos)
+        │   ├── config.js        # config.json con validación, escritura atómica y watch
+        │   ├── database.js      # data/database.json (usuarios, chats, stats)
+        │   ├── moderation.js    # Motor de antis (antilink, antispam, antidelete…)
+        │   ├── subbots.js       # Gestor de sub-bots con sesiones propias
+        │   ├── api.js           # Cliente de Velirius API (fetch, timeouts, límites)
+        │   └── utils/           # format, jid, media, messages, sticker, canvas,
+        │                        # characters, chat, economy, gif, group, paths, welcome
+        ├── scripts/
+        │   ├── ensure-sharp.js  # sharp nativo o WebAssembly (Termux)
+        │   ├── configure.js     # `npm run setup`
+        │   ├── check.js         # `npm run check`
+        │   └── install-termux.sh
+        ├── sessions/            # credenciales (gitignored)
+        ├── data/                # database.json (gitignored)
+        └── tests/               # 20 suites, 79 tests (node --test)
 ```
 
-## Funcionalidades activas (192 comandos en 17 categorías)
+🔶 = archivos donde vive **nuestro** menú; el resto del motor es el original.
 
-- ✅ **General**: ping, id, infobot, menu, menufull, fastcommand, support, owner, estadoapi
-- ✅ **Owners**: mod, delsession, join, bot on/off, setlen, setmenu
-- ✅ **Admins de grupo**: ban, sban, warn/delwarn (3 strikes → ban), mute/delmute, open/close, fijar/desfijar, namegp, desgp, photogp, grupo on/off, soloadmin, welcome
-- ✅ **Antis**: antilink, antiimg, antiaudio, antivideo, antisticker, antispam, antibot, antidocs, antipalabras con lista personalizable + auto-eliminación + advertencia
-- ✅ **Anti-delete**: anuncia cuando alguien borra un mensaje en el grupo
-- ✅ **Bienvenida** automática al entrar al grupo
-- ✅ **Sub-bots**: qr, code, bots, bot info, setbotname, setbotimg, autoread
-- ✅ **RPG/Economía**: balance, coins, transfer, dado, daily, adivinanza, pescar, miner, work, suerte, crimen, cazar, cofre, ppt, banco, deposit, robar, sorpresa, w/rw, claim, tiendag, comprarg, préstamos
-- ✅ **Pokémon**: catch (captura aleatoria), pokedex (Velirius API), pokemonbattle
-- ✅ **Perfil**: perfil, setbirth/age/desc/fav/genre, birthdays, marry/divorce
-- ✅ **Tops**: topcoins, topinactivos, topactivos
-- ✅ **Búsquedas**: google, pinterestbuscar, tiktokbuscar, wiki (Wikipedia ES), youtube
-- ✅ **Descargas**: facebook, instagram, letra, mp3, mp4, play, tiktok, tiktokaudio, pinterest (todos vía Velirius API)
-- ✅ **Reacciones**: 26 reacciones anime (abrazar, besar, golpear, bailar, llorar, reir, etc.) + reacción aleatoria
-- ✅ **Adicionales**: nota/delnota, infogrupo, reveal, translate, calculator, tts (Google TTS), stt
-- ✅ **Stickers**: .sticker (imagen/video → sticker), s (atajo), brat, bratv (video), bratestirado, attp, ttp, bobesponja/bratcoyote/bratanime/bratpinguino/bratboy, pack, toimg, tovid
-- ✅ **Diversión**: ship, topgays, topotakus, topfemboys, meme (Reddit random)
-- ✅ **Canvas** (Velirius API): canvaimagen, cuentatiktok, friendship, gaycard, googleimg, iqc/iqcblue/iqcpink, laptop, messengerquote, pc, pov, profilenote, quotly, searched, storyreply, x (tweet)
-- ✅ **Filtros de imagen** (Velirius): blur, deepfry, gay, glitch, grayscale, invert, liquify, pixel, sketch, swirl
+### Rutas independientes del directorio de trabajo
 
-Todas las funciones se almacenan en `database.json` (usuarios, grupos, monedas, notas, configuraciones) — no necesita base de datos externa.
+`npm start` lanza el bot desde la raíz del repositorio y `npm test` también corre desde ahí, así que ninguna ruta depende de `process.cwd()`: `src/utils/paths.js` expone `BOT_ROOT` y `resolveBot()`, y por ahí se resuelven `config.json`, `plugins/`, `assets/`, `sessions/` y `data/`.
 
-## ¿Cómo agregar un nuevo comando?
+## Cómo añadir un comando
 
-Cada archivo en `bots/<bot>/commands/` exporta un objeto con:
-- `title`: título de la categoría (se muestra en el menú)
-- `commands`: array de objetos con:
-  - `pattern`: nombre del comando (ej: `'hola <nombre>'`). Soporta comandos multi-palabra como `'bot on'`
-  - `noPrefix`: `true` para que funcione sin `.` (por defecto hace falta prefijo)
-  - `desc`: descripción que aparece en el menú
-  - `fast`: `true` para que aparezca en *Fast command*
-  - `handler`: función async `(sock, jid, args, msg) => { ... }` con la lógica
+Crea (o edita) un archivo en `bots/<bot>/plugins/` y exporta un arreglo de definiciones:
 
-Ejemplo (nuevo archivo `commands/saludos.js`):
 ```js
-module.exports = {
-  title: '✺ •• ┈┈ ⋯ Saludos ⋯ ┈┈ •• ✺',
-  commands: [
-    {
-      pattern: 'hola',
-      desc: 'Saluda al bot',
-      fast: true,
-      handler: async (sock, jid) => {
-        await sock.sendMessage(jid, { text: '¡Hola! 👋 Soy Satoru Gojo.' });
-      }
-    }
-  ]
-};
+export default [
+  {
+    commands: ['hola', 'hello'],        // el primero es el canonical; el resto, alias
+    category: 'general',
+    description: 'Saluda al bot.',
+    usage: '[nombre]',                  // opcional, aparece en el menú
+    // Banderas opcionales:
+    // owner: true        sólo owners (y mods si además pones mod: true)
+    // admin: true        sólo admins del grupo
+    // botAdmin: true     el bot debe ser admin
+    // group: true        sólo en grupos
+    // private: true      sólo en privado
+    // noPrefix: true     funciona sin '.'
+    // fast: true         aparece en "Fast command"
+    // needsGroupMetadata: true
+    async execute(ctx) {
+      const nombre = ctx.text || 'usuario'
+      await ctx.react('👋')
+      return ctx.reply(`¡Hola, ${nombre}! Soy ${ctx.config.botName}.`)
+    },
+  },
+]
 ```
-No necesitas importar nada más: el loader lo detecta automáticamente al reiniciar el bot.
 
-### Helpers disponibles
-En `bots/satoru-gojo/lib/`:
-- `runtime.js` — `patchWebCrypto()` (fix del pairing code en Node 18/Termux), `verifyPairingCrypto()`, `nodeInfo()`, `normalizePhone(raw)`, `sessionState(authDir)`, `clearSession(authDir)`. Ejecutable como diagnóstico: `npm run doctor`
-- `database.js` — `getUser(jid)`, `getGroup(jid)`, `db`, `save()` para persistencia
-- `helpers.js` — `isOwner`, `isAdmin(sock,jid,participant)`, `isGroup`, `rand(min,max)`, `pick(array)`, `formatTime(ms)`
-- `media.js` — `downloadMsg(msg)`, `sendTextSticker(sock,jid,text,type)`, `sendImageAsSticker(...)`
-- `velirius.js` — cliente de la API Velirius: `request(endpoint,params)`, `getImage(endpoint,params)`, `getSticker(endpoint,params)`
+`ctx` trae: `sock`, `m` (mensaje serializado), `config`, `configStore`, `db`, `registry`, `api` (Velirius), `args`, `text`, `usedPrefix`, `isOwner`, `isMod`, `isGroup`, `isAdmin`, `isBotAdmin`, `groupMetadata`, `participants`, `send()`, `reply()`, `react()`.
+
+El loader valida que exista `execute()` y `commands`, y **falla si un alias está duplicado** en dos plugins. Para que aparezca en el menú, añádelo a `MENU_LAYOUT` en `src/menu.js`.
+
+## Configuración (`config.json`)
+
+| Campo | Descripción |
+|---|---|
+| `botName`, `prefix`, `footer` | Identidad del bot |
+| `owners`, `ownerLids`, `mods` | Números con permisos |
+| `banner` | Ruta o URL de la imagen del menú |
+| `menu` | `title`, `greeting`, `selectMenu`, `copyright`, `supportText`, `buttons` |
+| `menuMode` | `interactive` (nuestro menú con botones), `list` o `text` |
+| `mode` | `public` o `self` (sólo owners/mods) |
+| `sessionDir`, `language`, `autoRead`, `cooldownMs`, `logLevel` | Comportamiento |
+| `api` | `baseUrl`, `timeoutMs`, `maxMediaMB` de Velirius API |
+
+La configuración se valida al cargar y al guardar (`normalizeConfig`): un valor inválido no rompe el bot en marcha, se conserva la última configuración válida.
+
+## Solución de problemas
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `✖ Este bot necesita Node.js 20.9 o superior` | Node viejo (el motor usa Web Crypto global) | `pkg update && pkg install nodejs` |
+| Escribes el número y no pasa nada al vincular | El proceso padre tenía el `readline` abierto y le robaba las teclas al bot | Ya corregido: el manager libera stdin antes de lanzar el hijo. Alternativa: `npm run pairing -- --phone=<número>` |
+| No aparece el código de pairing | Número con `+`, espacios o el `0` de la troncal local | Usa sólo dígitos con código de país (ej. `59896719709`) |
+| Se queda colgado al arrancar | Sin salida a `web.whatsapp.com` | Revisa la red; el bot reintenta con backoff |
+| El menú llega sin botones | WhatsApp no habilitó `interactiveMessage` en esa cuenta | Automático: llega el banner + menú de texto con `.menufull`, `.fastcommand`, `.support` |
+| Los stickers fallan | sharp no disponible | `npm run fix:sharp` (instala la variante WebAssembly) |
+| Un comando no responde | Error dentro del plugin | El bot responde con el motivo y lo registra en consola |
+| Cambios en un plugin no se aplican | El loader cachea módulos | `npm run dev` (watch) o reinicia el bot |
+
+Diagnóstico rápido:
+
+```bash
+npm run check
+# ✔ Sintaxis correcta: 49 archivos
+# ✔ Configuración válida y banner disponible
+# ✔ Plugins válidos: 222 comandos (405 alias)
+```
+
+## Tests
+
+```bash
+npm test     # 79 tests en 20 suites
+```
+
+Cubren el registro de plugins, el handler (permisos, cooldown, antis), el menú (nuestro diseño, botones, respaldos, filtros por rol), la API, economía, juegos, gacha, personajes, Pokémon, perfil, reacciones, stickers, canvas, sub-bots, moderación y configuración.
+
+## Créditos
+
+El motor (`src/`), los 22 archivos de `plugins/`, los `scripts/` y las suites de `tests/` de `bots/satoru-gojo/` provienen de [Velirius-bot-g](https://github.com/lyanvalentinmail-prog/Velirius-bot-g) (MIT, © Velirius Bot contributors), que se conserva en `bots/satoru-gojo/LICENSE`.
+
+Sobre esa base, en MultiBots:
+
+- La estructura se adaptó al layout multi-bot (`bots/<nombre>/` autónomo) y las rutas ya no dependen de `process.cwd()` (`src/utils/paths.js`).
+- El menú es **nuestro**: banner de Satoru Gojo, saludo, "Selecciona el menu que necesites", copyright y los tres botones *Menu / Fast command / Support* con sus respaldos (`src/menu.js`, `src/interactive.js`).
+- Los plugins `menufull`, `fastcommand` y `support`, y que `menu` funcione sin prefijo.
+- El manager de la raíz (`index.js`) y el instalador de Termux.
+
+Los datos de personajes/gacha y la API son de Velirius (`config.json → api.baseUrl`).
 
 ---
-© MultiBots
+© MultiBots · MIT

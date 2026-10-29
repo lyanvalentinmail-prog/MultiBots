@@ -1,0 +1,50 @@
+{
+  "botName": "Satoru Gojo",
+  "prefix": ".",
+  "owners": [
+    {
+      "number": "59896719709",
+      "name": "Lyann"
+    }
+  ],
+  "ownerLids": [],
+  "mods": [],
+  "language": "es",
+  "banner": "./assets/banner.jpg",
+  "menuMode": "interactive",
+  "mode": "public",
+  "sessionDir": "./sessions",
+  "autoRead": true,
+  "cooldownMs": 1200,
+  "logLevel": "silent",
+  "footer": "Ⓒ Satoru gojo",
+  "menu": {
+    "title": "Satoru gojo",
+    "greeting": "¡Buenos días! ☀️",
+    "selectMenu": "Selecciona el menu que necesites",
+    "copyright": "Ⓒ Satoru gojo",
+    "supportText": "📞 Soporte: wa.me/59896719709",
+    "buttons": [
+      {
+        "id": "menu_full",
+        "label": "Menu",
+        "command": "menufull"
+      },
+      {
+        "id": "menu_fast",
+        "label": "Fast command",
+        "command": "fastcommand"
+      },
+      {
+        "id": "menu_support",
+        "label": "Support",
+        "command": "support"
+      }
+    ]
+  },
+  "api": {
+    "baseUrl": "https://velirius-api-sd8u.vercel.app",
+    "timeoutMs": 120000,
+    "maxMediaMB": 64
+  }
+}
