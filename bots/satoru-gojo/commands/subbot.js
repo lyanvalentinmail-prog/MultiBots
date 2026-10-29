@@ -15,10 +15,10 @@ module.exports = {
   title: '✺ •• ┈┈ ⋯ Sub bot ⋯ ┈┈ •• ✺',
   commands: [
     { pattern: 'qr', desc: 'Muestra QR del bot principal', handler: async (sock,jid)=>{
-      await sock.sendMessage(jid,{text:'📱 El QR solo se muestra al iniciar el bot por consola (Termux). Elimina la carpeta `bots/satoru-gojo/auth` y reinicia para obtener un QR nuevo.'});
+      await sock.sendMessage(jid,{text:'📱 *Código QR*\n\nEl QR sólo se muestra en la consola de Termux al arrancar el bot.\n\nPara obtener uno nuevo:\n1. `.delsession` (solo owner) — borra la sesión actual\n2. En Termux: `npm run qr`\n\nSi ya estás vinculado no hace falta nada: la sesión se guarda en `bots/satoru-gojo/auth/`.'});
     }},
     { pattern: 'code', desc: 'Pairing code (re-inicio requerido)', handler: async (sock,jid)=>{
-      await sock.sendMessage(jid,{text:'🔢 Para obtener un pairing code nuevo, elimina la carpeta `bots/satoru-gojo/auth` y reinicia el bot en Termux seleccionando la opción 1.'});
+      await sock.sendMessage(jid,{text:'🔢 *Pairing code (8 dígitos)*\n\nSe genera en la consola de Termux al vincular por primera vez:\n\n• `npm run pairing` → te pregunta el número\n• `npm run pairing -- 59896719709` → va directo\n• `npm start` → opción 1\n\nLuego en WhatsApp: ⋮ → Dispositivos vinculados → Vincular un dispositivo → *Vincular con código de teléfono* → escribe el código (caduca en ~60 s).\n\n¿No aparece el código?\n1. `npm run doctor` — diagnóstico (Node/Web Crypto/sesión)\n2. `npm run reset` — limpia una sesión a medias y vuelve a pedirlo\n3. Node 18 o inferior: `pkg install nodejs` (el bot ya parchea la Web Crypto, pero conviene actualizar)'});
     }},
     { pattern: 'bots', desc: 'Listar sub-bots', handler: async (sock,jid)=>{
       const sessions = listSessions();
