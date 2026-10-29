@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const { categories, fastCommands, findCommand } = require('./commands');
-const { isAdmin, isGroup, getSender } = require('./lib/helpers');
+const { isAdmin, isGroup, getSender, isOwner, unwrapMessage, getMessageText } = require('./lib/helpers');
 const { getGroup } = require('./lib/database');
 
 const SUPPORT_NUMBER = config.ownerNumber;
@@ -39,9 +39,66 @@ function buildFullMenuText() {
   return text;
 }
 
+/** Lee el banner sin romper si el archivo no está. */
+function readBanner() {
+  try {
+    const bannerPath = path.join(__dirname, config.messages.welcomeFile);
+    if (fs.existsSync(bannerPath)) return fs.readFileSync(bannerPath);
+  } catch (e) {
+    console.error('banner:', e.message);
+  }
+  return null;
+}
+
+const MENU_BUTTONS = [
+  { buttonId: 'menu_full', displayText: 'Menu', command: 'menufull' },
+  { buttonId: 'menu_fast', displayText: 'Fast command', command: 'fastcommand' },
+  { buttonId: 'menu_support', displayText: 'Support', command: 'support' }
+];
+
+/**
+ * Botones reales vía `interactiveMessage` (native flow).
+ *
+ * Baileys 6.7.x NO soporta la clave `buttons` en `sendMessage()`: la ignora en
+ * silencio (generateWAMessageContent sólo maneja text/image/video/...). Por eso
+ * el menú aparecía sin botones y `handleButtonReply` nunca se ejecutaba.
+ */
+async function sendInteractiveButtons(sock, jid, bodyText, footerText) {
+  const { proto, generateWAMessageFromContent } = require('@whiskeysockets/baileys');
+  const IM = proto.Message.InteractiveMessage;
+  if (!IM || typeof generateWAMessageFromContent !== 'function' || typeof sock.relayMessage !== 'function') {
+    throw new Error('interactiveMessage no disponible en esta versión de Baileys');
+  }
+
+  const content = {
+    interactiveMessage: IM.create({
+      body: IM.Body.create({ text: bodyText }),
+      footer: IM.Footer.create({ text: footerText || '' }),
+      nativeFlowMessage: IM.NativeFlowMessage.create({
+        buttons: MENU_BUTTONS.map(b => ({
+          name: 'quick_reply',
+          buttonParamsJson: JSON.stringify({ display_text: b.displayText, id: b.buttonId })
+        }))
+      })
+    })
+  };
+
+  const wa = generateWAMessageFromContent(jid, content, {});
+  await sock.relayMessage(jid, wa.message, { messageId: wa.key.id });
+}
+
+/** Menú en texto: siempre funciona, aunque WhatsApp no muestre botones. */
+function buildTextMenuFallback() {
+  const lines = MENU_BUTTONS.map(b => `> ${config.prefix}${b.command} — *${b.displayText}*`);
+  return (
+    `${config.messages.selectMenu}\n\n` +
+    lines.join('\n') +
+    `\n\n${config.messages.copyright}`
+  );
+}
+
 async function sendMainMenu(sock, jid, userName) {
-  const bannerPath = path.join(__dirname, config.messages.welcomeFile);
-  const bannerBuf = fs.readFileSync(bannerPath);
+  const bannerBuf = readBanner();
 
   const greeting = `${config.messages.greeting} ${userName}`;
   const captionText =
@@ -50,27 +107,22 @@ async function sendMainMenu(sock, jid, userName) {
     `${config.messages.selectMenu}\n\n` +
     `\`\`\`${config.messages.copyright}\`\`\``;
 
-  const buttons = [
-    { buttonId: 'menu_full', buttonText: { displayText: 'Menu' }, type: 1 },
-    { buttonId: 'menu_fast', buttonText: { displayText: 'Fast command' }, type: 1 },
-    { buttonId: 'menu_support', buttonText: { displayText: 'Support' }, type: 1 }
-  ];
-
-  try {
-    await sock.sendMessage(jid, {
-      image: bannerBuf,
-      caption: captionText,
-      buttons: buttons,
-      footer: config.messages.copyright,
-      headerType: 4
-    });
-  } catch (e) {
+  // 1) Imagen + caption (esto sí lo soporta Baileys)
+  if (bannerBuf) {
     await sock.sendMessage(jid, { image: bannerBuf, caption: captionText });
-    await sock.sendMessage(jid, {
-      text: 'Selecciona una opción:',
-      buttons: buttons,
-      footer: config.messages.copyright
-    });
+  } else {
+    await sock.sendMessage(jid, { text: captionText });
+  }
+
+  // 2) Los tres botones; si WhatsApp/Baileys no los acepta, menú de texto
+  try {
+    await sendInteractiveButtons(sock, jid, config.messages.selectMenu, config.messages.copyright);
+  } catch (e) {
+    try {
+      await sock.sendMessage(jid, { text: buildTextMenuFallback() });
+    } catch (e2) {
+      console.error('menu fallback:', e2?.message || e2);
+    }
   }
 }
 
@@ -88,16 +140,17 @@ async function handleButtonReply(sock, jid, selectedButtonId) {
 }
 
 function extractText(msg) {
-  if (msg.message?.conversation) return msg.message.conversation;
-  if (msg.message?.extendedTextMessage) return msg.message.extendedTextMessage.text || '';
-  if (msg.message?.buttonsResponseMessage) {
+  const m = unwrapMessage(msg);
+  if (!m) return '';
+
+  if (m.buttonsResponseMessage) {
     return {
-      buttonId: msg.message.buttonsResponseMessage.selectedButtonId,
-      text: msg.message.buttonsResponseMessage.selectedDisplayText || ''
+      buttonId: m.buttonsResponseMessage.selectedButtonId,
+      text: m.buttonsResponseMessage.selectedDisplayText || ''
     };
   }
-  if (msg.message?.interactiveResponseMessage) {
-    const resp = msg.message.interactiveResponseMessage;
+  if (m.interactiveResponseMessage) {
+    const resp = m.interactiveResponseMessage;
     let buttonId = null;
     try {
       const parsed = JSON.parse(resp.nativeFlowResponseMessage?.paramsJson || '{}');
@@ -107,7 +160,16 @@ function extractText(msg) {
     }
     return { buttonId, text: '' };
   }
-  return '';
+  if (m.listResponseMessage) {
+    return {
+      buttonId: m.listResponseMessage.singleSelectReply?.selectedRowId || null,
+      text: m.listResponseMessage.title || m.listResponseMessage.description || ''
+    };
+  }
+
+  // conversation / extendedText / caption de imagen, video o documento.
+  // Sin las captions, `.sticker` escrito sobre una foto no se detectaba.
+  return getMessageText(msg);
 }
 
 async function handleMessage(sock, msg) {
@@ -115,21 +177,46 @@ async function handleMessage(sock, msg) {
     if (!msg.message) return;
     if (msg.key.fromMe) return;
 
-    // Respetar "bot off" del owner (excepto "bot on")
+    /* --- Datos básicos del mensaje ---
+     * IMPORTANTE: `jid` y el texto se resuelven ANTES que nada. Antes estaban
+     * declarados más abajo y el bloque de "Antis" los leía primero, así que
+     * CADA mensaje reventaba con
+     *   ReferenceError: Cannot access 'jid' before initialization
+     * y el try/catch se lo tragaba: el bot no respondía a ningún comando. */
+    const jid = getJid(msg);
+    const sender = getSender(msg);
+
+    const extracted = extractText(msg);
+    let text = '';
+    let buttonId = null;
+    if (typeof extracted === 'string') {
+      text = extracted;
+    } else {
+      text = extracted.text || '';
+      buttonId = extracted.buttonId;
+    }
+
+    const trimmed = (text || '').trim();
+    const lower = trimmed.toLowerCase();
+
+    // Botones del menú principal
+    if (buttonId) {
+      await handleButtonReply(sock, jid, buttonId);
+      return;
+    }
+
+    // Respetar "bot off": con el bot apagado sólo se procesa al owner
+    // (que es quien puede volver a encenderlo con `.bot on`).
     const { db } = require('./lib/database');
-    const sender = msg.key.participant || msg.key.remoteJid;
-    const { isOwner } = require('./lib/helpers');
-    const testText = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim().toLowerCase();
-    if (!db.global.botOn && testText !== '.bot on' && !isOwner(sender)) return;
-    if (!db.global.botOn && testText === '.bot on' && !isOwner(sender)) return;
+    if (!db.global.botOn && !isOwner(sender)) return;
 
     // === Antis (solo en grupos) ===
     if (isGroup(jid) && !isOwner(sender)) {
       const g = getGroup(jid);
       const senderIsAdmin = await isAdmin(sock, jid, sender);
       if (!senderIsAdmin && g) {
-        const m = msg.message;
-        const hasLink = /https?:\/\/|chat\.whatsapp\.com|wa\.me/i.test(testText);
+        const m = unwrapMessage(msg);
+        const hasLink = /https?:\/\/|chat\.whatsapp\.com|wa\.me/i.test(lower);
         const hasImg = !!(m?.imageMessage || m?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
         const hasVideo = !!(m?.videoMessage || m?.extendedTextMessage?.contextInfo?.quotedMessage?.videoMessage);
         const hasAudio = !!(m?.audioMessage);
@@ -142,7 +229,7 @@ async function handleMessage(sock, msg) {
         else if (g.antiaudio && hasAudio) reason = 'audios prohibidos';
         else if (g.antisticker && hasSticker) reason = 'stickers prohibidos';
         else if (g.antidocs && hasDoc) reason = 'documentos prohibidos';
-        else if (g.antipalabras && g.antipalabrasList && g.antipalabrasList.some(w => testText.includes(w))) reason = 'palabra prohibida';
+        else if (g.antipalabras && Array.isArray(g.antipalabrasList) && g.antipalabrasList.some(w => w && lower.includes(String(w).toLowerCase()))) reason = 'palabra prohibida';
         if (reason) {
           try { await sock.sendMessage(jid, { delete: msg.key }); } catch {}
           await sock.sendMessage(jid, { text: `⚠️ @${sender.split('@')[0]} ${reason} (eliminado).`, mentions: [sender] });
@@ -155,41 +242,28 @@ async function handleMessage(sock, msg) {
       }
     }
 
-    const jid = getJid(msg);
-    const extracted = extractText(msg);
-    let text = '';
-    let buttonId = null;
-
-    if (typeof extracted === 'string') {
-      text = extracted;
-    } else {
-      text = extracted.text || '';
-      buttonId = extracted.buttonId;
-    }
-
-    if (buttonId) {
-      await handleButtonReply(sock, jid, buttonId);
-      return;
-    }
-
     const userName = getUserName(msg);
-    const trimmed = (text || '').trim();
-    const lower = trimmed.toLowerCase();
 
-    // Comando "menu" funciona con o sin prefijo
-    if (['menu', '.menu', '!menu', '#menu'].includes(lower)) {
+    // Comando "menu": funciona con o sin prefijo (está marcado `noPrefix`)
+    if (['menu', '.menu', '!menu', '#menu', '/menu'].includes(lower)) {
       await sendMainMenu(sock, jid, userName);
       return;
     }
 
-    // Buscar y ejecutar comando (soporta texto con o sin prefijo)
+    // Buscar y ejecutar comando
     const found = findCommand(trimmed, config.prefix);
-    if (found && found.command.handler) {
+    if (found && typeof found.command.handler === 'function') {
       await found.command.handler(sock, jid, found.args, msg, found.match);
       return;
     }
   } catch (err) {
-    console.error('Error manejando mensaje:', err);
+    // Sin este log visible, un fallo aquí se ve como "el bot no responde".
+    console.error('Error manejando mensaje:', err?.stack || err?.message || err);
+    try {
+      await sock.sendMessage(msg.key.remoteJid, {
+        text: `⚠️ No pude ejecutar ese comando.\n\`${(err?.message || err || 'error').toString().slice(0, 120)}\``
+      });
+    } catch {}
   }
 }
 

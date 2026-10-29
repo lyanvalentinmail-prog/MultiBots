@@ -65,7 +65,46 @@ function timeSince(date) {
   return `${Math.floor(seconds)} segundos`;
 }
 
+/**
+ * Desenvuelve los contenedores con los que WhatsApp entrega algunos mensajes
+ * (ephemeral en grupos, viewOnce, documento con caption...).
+ *
+ * Sin esto, un comando escrito como *leyenda* de una imagen o de un video no se
+ * detecta (`.sticker` sobre una foto no hacía nada) y los "antis" no ven el
+ * medio cuando llega como viewOnce.
+ */
+function unwrapMessage(msg) {
+  let m = msg?.message || null;
+  for (let i = 0; i < 4 && m; i++) {
+    const inner =
+      m.ephemeralMessage?.message ||
+      m.viewOnceMessage?.message ||
+      m.viewOnceMessageV2?.message ||
+      m.viewOnceMessageV2Extension?.message ||
+      m.documentWithCaptionMessage?.message;
+    if (!inner) break;
+    m = inner;
+  }
+  return m;
+}
+
+/** Texto útil de un mensaje: conversación, texto extendido o leyenda de medio. */
+function getMessageText(msg) {
+  const m = unwrapMessage(msg);
+  if (!m) return '';
+  return (
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    m.documentMessage?.caption ||
+    m.locationMessage?.caption ||
+    ''
+  );
+}
+
 module.exports = {
   isOwner, isAdmin, isGroup, getSender, getMentioned, getQuoted,
+  unwrapMessage, getMessageText,
   rand, pick, formatTime, escapeRegex, timeSince
 };
