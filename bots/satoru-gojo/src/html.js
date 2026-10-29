@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { CATEGORIES } from './menu.js'
 import { isHttpUrl } from './utils/format.js'
 import { resolveBot } from './utils/paths.js'
+import { botVersion, formatUptime, spanishDate, spanishTime } from './utils/card.js'
+import { fetchWeather } from './utils/weather.js'
 
 /** Plantilla por defecto de la tarjeta HTML del menú. */
 export const DEFAULT_MENU_HTML = './assets/menu.html'
@@ -72,8 +74,20 @@ export async function renderMenuHtml(ctx) {
   const menu = config.menu || {}
   const templatePath = menu.htmlTemplate || DEFAULT_MENU_HTML
   const template = await readFile(resolveBot(templatePath), 'utf8')
+  const weather = menu.weatherEnabled === false
+    ? null
+    : await fetchWeather({ lat: menu.weatherLat, lon: menu.weatherLon }).catch(() => null)
 
   return fillTemplate(template, {
+    version: escapeHtml(botVersion(config)),
+    estado: 'Activo',
+    modo: escapeHtml(config.mode === 'self' ? 'Privado' : 'Público'),
+    comandos: String(ctx.registry?.count ?? ctx.registry?.commands?.size ?? 0),
+    actividad: escapeHtml(formatUptime()),
+    clima: escapeHtml(weather || 'Sin datos'),
+    hora: spanishTime(),
+    fecha: spanishDate(),
+    prefix: escapeHtml(ctx.usedPrefix || config.prefix),
     title: escapeHtml(menu.title || config.botName),
     botName: escapeHtml(config.botName),
     greeting: escapeHtml(menu.greeting || ''),

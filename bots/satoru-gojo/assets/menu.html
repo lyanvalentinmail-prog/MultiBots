@@ -1,104 +1,120 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>{title} · Menú</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117;
+    --tile: #161b22;
+    --border: #262d37;
+    --label: #8b949e;
+    --value: #e6edf3;
+    --muted: #9aa4b2;
+    --title: #c9c2ff;
+    --green: #3fb950;
+    --green-bg: #0f2117;
+    --green-border: #2ea043;
+    --amber: #e3b341;
+    --blue: #60a5fa;
+    --foot: #8b7bd8;
+  }
+  * { box-sizing: border-box; }
   body {
-    font-family: 'Segoe UI', Roboto, sans-serif;
-    background: #0b0f14;
-    color: #e6edf3;
-    min-height: 100vh;
+    margin: 0;
+    background: #05070a;
+    color: var(--value);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     display: flex;
     justify-content: center;
-    padding: 20px;
+    padding: 24px 12px;
   }
   .card {
     width: 100%;
-    max-width: 420px;
-    background: linear-gradient(180deg, #111a23 0%, #0b0f14 100%);
-    border-radius: 24px;
+    max-width: 560px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 28px;
     overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
   }
-  .banner {
-    width: 100%;
-    height: 280px;
-    background: #22c55e url('{banner}') center/cover no-repeat;
-    position: relative;
+  .banner { display: block; width: 100%; aspect-ratio: 1080 / 608; object-fit: cover; }
+  .body { padding: 26px 24px 30px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { margin: 0; font-size: 30px; letter-spacing: .3px; color: var(--title); }
+  .hello { margin: 0 0 6px; color: var(--muted); font-size: 17px; }
+  .hello strong { color: #fff; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tile {
+    background: var(--tile);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 92px;
   }
-  .banner::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(11,15,20,.95) 100%);
-  }
-  .content { padding: 24px; }
-  h1 {
-    font-size: 28px;
-    margin-bottom: 10px;
-    color: #a7f3d0;
-  }
-  .greeting { font-size: 20px; margin-bottom: 18px; }
-  .subtitle { font-size: 16px; margin-bottom: 8px; opacity: .9; }
-  .stats {
-    font-size: 12px;
-    color: #7d8590;
-    margin-bottom: 16px;
-  }
-  .copyright {
-    font-size: 11px;
-    color: #7d8590;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-  /* Los tres botones van separados: uno por fila, con su propio borde y espacio. */
-  .buttons { display: flex; flex-direction: column; gap: 12px; }
+  .tile .ico { font-size: 26px; line-height: 1; filter: grayscale(1) brightness(1.6); }
+  .tile .txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .tile .lbl { font-size: 12px; letter-spacing: 1.2px; color: var(--label); font-weight: 600; }
+  .tile .val { font-size: 19px; font-weight: 700; color: var(--value); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .full { grid-column: 1 / -1; }
+  .hour { background: var(--green-bg); border-color: var(--green-border); }
+  .hour .lbl, .hour .ico, .hour .date { color: var(--green); }
+  .hour .ico { filter: none; }
+  .hour .date { margin-left: auto; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .hint .ico { filter: none; }
+  .hint p { margin: 0; color: var(--muted); font-size: 15px; }
+  .hint code { color: var(--amber); font-weight: 700; }
+  .buttons { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
   .btn {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    width: 100%;
-    padding: 14px 20px;
-    background: #1f2937;
+    background: var(--tile);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 18px;
     color: #fff;
-    border: 1px solid #30363d;
-    border-radius: 14px;
-    font-size: 16px;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 17px;
     text-decoration: none;
-    transition: all .2s;
   }
-  .btn small { font-size: 12px; font-weight: 400; color: #9ca3af; }
-  .btn:hover { background: #22c55e; border-color: #22c55e; color: #0b0f14; }
-  .btn:hover small { color: #052e16; }
-  .btn.support { border-color: #3b82f6; color: #60a5fa; }
-  .btn.support:hover { background: #3b82f6; border-color: #3b82f6; color: #0b0f14; }
-  .foot {
-    margin-top: 22px;
-    font-size: 11px;
-    color: #4b5563;
-    text-align: center;
-  }
+  .btn small { font-weight: 500; font-size: 13px; color: var(--label); }
+  .btn.support { border-color: #3b82f6; color: var(--blue); }
+  .btn.support small { color: var(--blue); opacity: .8; }
+  footer { padding: 4px 0 8px; text-align: center; color: var(--foot); font-size: 14px; letter-spacing: .6px; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="banner"></div>
-    <div class="content">
-      <h1>{title}</h1>
-      <p class="greeting">{greeting} {usuario}</p>
-      <p class="subtitle">{selectMenu}</p>
-      <p class="stats">{stats}</p>
-      <p class="copyright">{copyright}</p>
+  <main class="card">
+    <img class="banner" src="{banner}" alt="{title}">
+    <div class="body">
+      <h1>{title} {version}</h1>
+      <p class="hello">{greeting} <strong>{usuario}</strong> · {selectMenu}</p>
+
+      <div class="grid">
+        <div class="tile"><span class="ico">👤</span><span class="txt"><span class="lbl">ESTADO</span><span class="val">{estado}</span></span></div>
+        <div class="tile"><span class="ico">💬</span><span class="txt"><span class="lbl">MODO</span><span class="val">{modo}</span></span></div>
+        <div class="tile"><span class="ico">⚙️</span><span class="txt"><span class="lbl">COMANDOS TOTALES</span><span class="val">{comandos}</span></span></div>
+        <div class="tile"><span class="ico">🕐</span><span class="txt"><span class="lbl">TIEMPO DE ACTIVIDAD</span><span class="val">{actividad}</span></span></div>
+        <div class="tile full"><span class="ico">🌦️</span><span class="txt"><span class="lbl">CLIMA</span><span class="val">{clima}</span></span></div>
+        <div class="tile full hour">
+          <span class="ico">🕒</span>
+          <span class="txt"><span class="lbl">HORA</span><span class="val">{hora}</span></span>
+          <span class="date">📅 {fecha}</span>
+        </div>
+        <div class="tile full hint"><span class="ico">💡</span><p>Escribe <code>{prefix}menu &lt;categoría&gt;</code> para ver las funciones.</p></div>
+      </div>
+
       <div class="buttons">
 {buttons}
       </div>
-      <p class="foot">{botName} · {year}</p>
+
+      <footer>✦ {botName} {version} ✦ · {copyright} · {stats}</footer>
     </div>
-  </div>
+  </main>
 </body>
 </html>

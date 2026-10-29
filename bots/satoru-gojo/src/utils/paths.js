@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 /**
@@ -15,4 +16,18 @@ export const BOT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)
 export function resolveBot(...segments) {
   const target = path.join(...segments)
   return path.isAbsolute(target) ? target : path.resolve(BOT_ROOT, target)
+}
+
+let cachedPackageVersion
+
+/** Versión del package.json de la raíz (para el "{bot name} {version}" de la tarjeta). */
+export function packageVersion() {
+  if (cachedPackageVersion === undefined) {
+    try {
+      cachedPackageVersion = JSON.parse(readFileSync(resolveBot('..', '..', 'package.json'), 'utf8')).version || ''
+    } catch {
+      cachedPackageVersion = ''
+    }
+  }
+  return cachedPackageVersion
 }

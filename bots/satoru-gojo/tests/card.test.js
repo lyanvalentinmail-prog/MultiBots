@@ -11,7 +11,10 @@ import {
   composeMenuCard,
   drawableText,
   fitText,
+  formatUptime,
   loadCardFont,
+  spanishDate,
+  spanishTime,
 } from '../src/utils/card.js'
 
 /**
@@ -50,14 +53,30 @@ test('fitText achica el cuerpo de letra y recorta con … si no entra', async ()
 
 test('el SVG de la tarjeta no lleva <text> (el sharp wasm no lo dibuja)', async () => {
   const ctx = cardContext()
-  const { svg, width, bannerHeight } = await buildCardSvg(ctx)
+  const { svg, width, height, bodyHeight, bannerHeight } = await buildCardSvg(ctx)
   assert.equal(width, 1080)
   assert.equal(bannerHeight, 608)
   assert.equal((svg.match(/<text/g) || []).length, 0, 'nada de <text>')
   assert.ok((svg.match(/<path /g) || []).length >= 10, 'los textos van como trayectorias')
-  assert.equal((svg.match(/<rect /g) || []).length, 4, 'degradado + los 3 botones')
-  assert.match(svg, /linearGradient id="fade"/, 'el banner se funde con el cuerpo')
+  assert.equal((svg.match(/<rect /g) || []).length, 13, 'cuerpo + 6 fichas + aviso + 3 botones + 2 iconos')
+  assert.ok(!svg.includes('linearGradient'), 'el diseño de Drive corta el banner en seco')
+  assert.match(svg, /stroke="#2ea043"/, 'la fila de HORA lleva su borde verde')
   assert.match(svg, /stroke="#3b82f6"/, 'el botón Support lleva su borde azul')
+  assert.equal(height, bannerHeight + bodyHeight, 'la altura total es banner + cuerpo')
+})
+
+test('formatUptime, spanishTime y spanishDate no dependen del ICU', async () => {
+  assert.equal(formatUptime(0), '0s')
+  assert.equal(formatUptime(65), '1m')
+  assert.equal(formatUptime(5), '5s')
+  assert.equal(formatUptime(90061), '1d 1h 1m')
+  assert.equal(spanishTime(new Date(2026, 9, 28, 19, 5)), '19:05')
+  assert.equal(spanishDate(new Date(2026, 9, 28)), 'mié 28 oct 2026')
+})
+
+test('con menu.weatherEnabled en false la tarjeta se compone sin tocar la red', async () => {
+  const card = await composeMenuCard(cardContext({ config: { menu: { weatherEnabled: false } } }))
+  assert.equal(card.subarray(0, 3).toString('hex'), 'ffd8ff', 'JPEG')
 })
 
 test('composeMenuCard entrega un JPEG 1080 con contenido', async () => {

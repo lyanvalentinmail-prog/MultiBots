@@ -8,9 +8,9 @@ import { cleanNumber, formatUptime, memoryUsage, normalizeCommand } from './util
 export const BUTTON_STYLES = ['native', 'template', 'buttons', 'sheet', 'carousel']
 
 export const BUTTON_STYLE_HINTS = {
-  native: 'chips de native flow, los 3 en una fila pegados al mensaje',
-  template: 'plantilla hidratada (templateMessage): botones separados, uno por fila',
-  buttons: 'botones clásicos (buttonsMessage): separados, hasta 3',
+  native: 'native flow: los 3 botones en vertical, separados uno por fila (el que usa el menú)',
+  template: 'plantilla hidratada (templateMessage): chips horizontales pegados al mensaje',
+  buttons: 'botones clásicos (buttonsMessage): fila horizontal, hasta 3',
   sheet: 'un botón que abre una hoja con las 3 opciones separadas por divisores',
   carousel: 'una tarjeta por botón, cada una con su banner',
 }
