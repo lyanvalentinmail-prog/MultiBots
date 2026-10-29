@@ -1,59 +1,69 @@
-#!/data/data/com.termux/files/usr/bin/bash
-# Script de instalación para Termux (también funciona en Linux/macOS)
-set -e
+#!/usr/bin/env bash
+# Instalador de MultiBots para Termux (también sirve en Linux/macOS).
+set -euo pipefail
 
 cd "$(dirname "$0")"
+ROOT_DIR="$(pwd)"
 
 IS_TERMUX=0
-if [ -d "/data/data/com.termux/files/usr" ]; then IS_TERMUX=1; fi
+[ -d "/data/data/com.termux/files/usr" ] && IS_TERMUX=1
 
-echo "🔄 Actualizando paquetes..."
+echo "🔄 Actualizando paquetes…"
 if [ "$IS_TERMUX" = "1" ]; then
   pkg update -y && pkg upgrade -y
-  echo "📦 Instalando Node.js y Git..."
-  # `nodejs` (no `nodejs-lts`): garantiza Node >= 19, que trae la Web Crypto
-  # global que necesita el *pairing code* de Baileys.
-  pkg install -y nodejs git
+  echo "📦 Instalando Node.js, Git, nano y FFmpeg…"
+  # `nodejs` (no `nodejs-lts`): este motor exige Node 20.9 o superior.
+  pkg install -y nodejs git nano ffmpeg
 else
-  echo "ℹ️  Entorno no-Termux detectado: se asume que node/npm ya están instalados."
+  echo "ℹ️  Entorno no-Termux: se asume que node/npm ya están instalados."
 fi
 
-echo "📥 Instalando dependencias npm..."
-npm install --no-audit --no-fund
-
-echo ""
-echo "🩺 Comprobando que el pairing code funcionará..."
-if npm run doctor --silent; then
-  DOCTOR_OK=1
-else
-  DOCTOR_OK=0
+if ! command -v node >/dev/null 2>&1; then
+  echo "✖ Node.js no está instalado. En Termux: pkg install nodejs"
+  exit 1
 fi
 
-# Aviso si el Node es viejo (18): el bot parchea la Web Crypto igualmente,
-# pero conviene actualizar.
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-if [ "$NODE_MAJOR" -lt 19 ]; then
-  echo ""
-  echo "⚠️  Tienes Node $(node -v). El pairing code necesita la Web Crypto global"
-  echo "   (Node 19+). El bot la parchea automáticamente, pero lo recomendado es:"
+if ! node -e "const [M,m]=process.versions.node.split('.').map(Number); process.exit(M<20||(M===20&&m<9)?1:0)"; then
+  echo "✖ Se necesita Node.js 20.9 o superior (tienes $(node -v))."
   if [ "$IS_TERMUX" = "1" ]; then
-    echo "     pkg uninstall -y nodejs-lts && pkg install -y nodejs"
-  else
-    echo "     actualiza Node a una versión 20 o superior"
+    echo "  Ejecuta: pkg update && pkg install nodejs"
   fi
+  exit 1
+fi
+echo "✔ Node $(node -v)"
+
+echo "📥 Instalando dependencias npm…"
+if [ -f package-lock.json ]; then
+  npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+else
+  npm install --no-audit --no-fund
 fi
 
-echo ""
-if [ "$DOCTOR_OK" = "1" ]; then
-  echo "✅ Instalación completada."
+echo "🖼️  Preparando sharp (nativo o WebAssembly en Termux)…"
+npm run fix:sharp --silent || true
+
+echo "🩺 Verificando el bot…"
+if npm run check --silent; then
+  echo "✔ Verificación correcta"
 else
-  echo "⚠️  Instalación completada, pero el diagnóstico falló (revisa arriba)."
+  echo "⚠ La verificación falló; revisa el mensaje anterior."
 fi
-echo ""
-echo "Ejecuta el bot con:"
-echo "  npm start                            # menú interactivo"
-echo "  npm run pairing                      # directo al pairing code (8 dígitos)"
-echo "  npm run pairing -- 59896719709       # sin que te pregunte el número"
-echo "  npm run qr                           # directo al código QR"
-echo "  npm run doctor                       # diagnóstico"
-echo "  npm run reset                        # borra la sesión y vuelve a vincular"
+
+cat <<EOF
+
+✅ Instalación completada.
+
+Ejecuta el bot con:
+  npm start                                  # menú de bots (elige cuál arrancar)
+  npm run satoru                             # Satoru Gojo con reinicio manual
+  ./bots/satoru-gojo/start.sh                # con reinicio automático
+
+Vinculación con WhatsApp:
+  npm run pairing -- --phone=59896719709     # código de 8 dígitos (recomendado)
+  npm run qr                                 # escanear QR
+
+Utilidades:
+  npm run setup                              # asistente de configuración
+  npm run check    (alias: npm run doctor)   # sintaxis + config + plugins
+  npm test                                   # $(ls bots/satoru-gojo/tests/*.test.js | wc -l | tr -d ' ') suites de tests
+EOF

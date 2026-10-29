@@ -1,121 +1,142 @@
 #!/usr/bin/env node
-'use strict';
-
 /**
- * Selector interactivo de bots para Termux.
+ * MultiBots — selector de bots.
  *
- * Detalle importante: el proceso hijo hereda stdin (`stdio: 'inherit'`). Si el
- * padre deja su propio `readline` abierto, los DOS procesos leen de la misma
- * TTY y se roban las teclas — en Termux eso se ve como que el bot "no responde"
- * cuando te pregunta el método de login o el número del pairing code. Por eso
- * cerramos el readline ANTES de lanzar el hijo.
+ * Cada bot vive en `bots/<nombre>/` y es autónomo (su propio index.js,
+ * config.json, plugins/, src/, assets/, sessions/, data/). Por eso el hijo se
+ * lanza con `cwd` = la carpeta del bot.
+ *
+ * Detalle importante (regresión ya corregida una vez): el hijo hereda stdin
+ * (`stdio: 'inherit'`). Si el padre deja su `readline` abierto, los DOS procesos
+ * leen de la misma TTY y se roban las teclas — en Termux eso se ve como que el
+ * bot "no responde" cuando pregunta la vinculación o el número del pairing code.
+ * Aquí se libera stdin ANTES de lanzar el hijo.
  *
  * Uso:
- *   npm start                          # menú interactivo
- *   npm start -- --pairing 59896719709 # directo a pairing code
- *   npm start -- --qr                  # directo a QR
- *   npm start -- --reset               # borra la sesión y vuelve a vincular
+ *   npm start                                  # menú interactivo
+ *   npm start -- --pairing --phone=59896719709 # directo a pairing code
+ *   npm start -- --qr                          # directo a QR
  */
 
-const { spawn } = require('child_process');
-const readline = require('readline');
-const fs = require('fs');
-const path = require('path');
+import { spawn, spawnSync } from 'node:child_process'
+import { createInterface } from 'node:readline/promises'
+import { existsSync, readdirSync } from 'node:fs'
+import path from 'node:path'
+import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
-const botsDir = path.join(__dirname, 'bots');
-const bots = fs.existsSync(botsDir)
-  ? fs.readdirSync(botsDir).filter(f => fs.existsSync(path.join(botsDir, f, 'index.js')))
-  : [];
+const ROOT = path.dirname(fileURLToPath(import.meta.url))
+const BOTS_DIR = path.join(ROOT, 'bots')
 
-const argv = process.argv.slice(2);
-const passthrough = argv.filter(a => a.startsWith('-') || /^\d{6,15}$/.test(a));
-const IS_TTY = !!process.stdin.isTTY;
+const bots = existsSync(BOTS_DIR)
+  ? readdirSync(BOTS_DIR, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && existsSync(path.join(BOTS_DIR, entry.name, 'index.js')))
+      .map(entry => entry.name)
+      .sort()
+  : []
 
-let rl = null;
-function ask(q) {
-  if (!rl) rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: IS_TTY });
-  return new Promise(res => rl.question(q, a => res((a || '').trim())));
+const argv = process.argv.slice(2)
+const passthrough = argv.filter(arg => arg.startsWith('-') || /^\d{6,15}$/.test(arg))
+const IS_TTY = Boolean(process.stdin.isTTY)
+
+let rl = null
+function ask(question) {
+  rl ||= createInterface({ input: process.stdin, output: process.stdout, terminal: IS_TTY })
+  return rl.question(question).then(answer => String(answer || '').trim())
 }
+
+/** Devuelve la TTY limpia al proceso hijo. */
 function releaseStdin() {
-  if (rl) { try { rl.close(); } catch {} rl = null; }
-  // Dejar stdin en modo no-crudo y sin listeners: el hijo necesita la TTY limpia.
+  try { rl?.close() } catch {}
+  rl = null
   try {
-    if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(false);
-    process.stdin.pause();
-    process.stdin.removeAllListeners('data');
-    process.stdin.removeAllListeners('keypress');
+    if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(false)
+    process.stdin.removeAllListeners('data')
+    process.stdin.removeAllListeners('keypress')
+    process.stdin.pause()
   } catch {}
 }
 
-function launch(botName) {
-  const script = path.join(botsDir, botName, 'index.js');
-  console.log(`\n▶ Iniciando ${botName}...`);
-  if (passthrough.length) console.log(`  args: ${passthrough.join(' ')}`);
-  console.log('');
+/** Prepara sharp (nativo o WebAssembly en Termux) antes de arrancar el bot. */
+function ensureSharp(botDir) {
+  const script = path.join(botDir, 'scripts', 'ensure-sharp.js')
+  if (!existsSync(script)) return
+  spawnSync(process.execPath, [script], { cwd: botDir, stdio: 'inherit', timeout: 240000 })
+}
 
-  releaseStdin();
+function launch(botName) {
+  const botDir = path.join(BOTS_DIR, botName)
+  const script = path.join(botDir, 'index.js')
+  console.log(`\n▶ Iniciando ${botName}…`)
+  if (passthrough.length) console.log(`  args: ${passthrough.join(' ')}`)
+  console.log('')
+
+  releaseStdin()
+  ensureSharp(botDir)
 
   const child = spawn(process.execPath, [script, ...passthrough], {
     stdio: 'inherit',
-    cwd: __dirname
-  });
+    cwd: botDir,
+    env: process.env,
+  })
 
-  const forward = sig => { try { child.kill(sig); } catch {} };
-  process.on('SIGINT', () => forward('SIGINT'));
-  process.on('SIGTERM', () => forward('SIGTERM'));
+  const forward = signal => { try { child.kill(signal) } catch {} }
+  process.on('SIGINT', () => forward('SIGINT'))
+  process.on('SIGTERM', () => forward('SIGTERM'))
 
-  child.on('error', err => {
-    console.error('❌ No se pudo iniciar el bot:', err.message);
-    process.exit(1);
-  });
+  child.on('error', error => {
+    console.error('❌ No se pudo iniciar el bot:', error.message)
+    process.exit(1)
+  })
   child.on('exit', (code, signal) => {
-    if (signal) console.log(`\n(${signal})`);
-    process.exit(code == null ? 0 : code);
-  });
+    if (signal) console.log(`\n(${signal})`)
+    process.exit(code == null ? 0 : code)
+  })
 }
 
-(async () => {
-  console.log('╔═══════════════════════════════╗');
-  console.log('║       MultiBots Manager      ║');
-  console.log('║   (WhatsApp bots / Baileys)  ║');
-  console.log('╚═══════════════════════════════╝\n');
+async function main() {
+  console.log('╔═══════════════════════════════╗')
+  console.log('║       MultiBots Manager       ║')
+  console.log('║   (WhatsApp bots / Baileys)   ║')
+  console.log('╚═══════════════════════════════╝\n')
 
   if (!bots.length) {
-    console.error('❌ No se encontró ningún bot en bots/');
-    process.exit(1);
+    console.error('❌ No se encontró ningún bot en bots/')
+    process.exit(1)
   }
 
-  // Si ya nos dicen qué método usar y sólo hay un bot, no preguntamos nada.
-  if (bots.length === 1 && passthrough.some(a => a.startsWith('-'))) {
-    return launch(bots[0]);
-  }
+  // Con un solo bot y argumentos explícitos, directo (sin preguntar nada).
+  if (bots.length === 1 && passthrough.some(arg => arg.startsWith('-'))) return launch(bots[0])
 
-  console.log('Bots disponibles:');
-  bots.forEach((b, i) => console.log(`  [${i + 1}] ${b}`));
-  console.log('  [0] Salir\n');
+  console.log('Bots disponibles:')
+  bots.forEach((bot, index) => console.log(`  [${index + 1}] ${bot}`))
+  console.log('  [0] Salir\n')
 
   if (!IS_TTY) {
-    releaseStdin();
-    return launch(bots[0]);
+    console.log('ℹ️  stdin no es una terminal: se lanza el primer bot.')
+    return launch(bots[0])
   }
 
-  let chosen = null;
-  for (let i = 0; i < 5 && !chosen; i++) {
-    const sel = await ask('Selecciona el número del bot que quieres ejecutar: ');
-    const n = parseInt(sel, 10);
-    if (n === 0) {
-      console.log('Saliendo...');
-      releaseStdin();
-      process.exit(0);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const answer = await ask('Selecciona el número del bot que quieres ejecutar: ')
+    const index = Number.parseInt(answer, 10)
+    if (index === 0) {
+      console.log('Saliendo…')
+      releaseStdin()
+      process.exit(0)
     }
-    chosen = bots[n - 1] || null;
-    if (!chosen) console.log('Opción inválida.');
-  }
-  if (!chosen) {
-    console.error('❌ Demasiados intentos.');
-    releaseStdin();
-    process.exit(1);
+    const chosen = bots[index - 1]
+    if (chosen) return launch(chosen)
+    console.log('Opción inválida.')
   }
 
-  launch(chosen);
-})();
+  console.error('❌ Demasiados intentos.')
+  releaseStdin()
+  process.exit(1)
+}
+
+main().catch(error => {
+  console.error('❌ Error fatal:', error?.stack || error?.message || error)
+  releaseStdin()
+  process.exit(1)
+})
