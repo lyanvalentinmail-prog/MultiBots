@@ -47,6 +47,7 @@ test('genera listMessage clásico con nodo biz', async () => {
  * ------------------------------------------------------------------ */
 import { DEFAULT_CONFIG, normalizeConfig } from '../src/config.js'
 import { PluginRegistry } from '../src/plugins.js'
+import { BUTTON_STYLES } from '../src/menu.js'
 import { deliverMenu, buildButtonTextMenu } from '../src/interactive.js'
 
 const registry = await new PluginRegistry().load()
@@ -86,35 +87,122 @@ function menuContext(overrides = {}) {
   }
 }
 
-function buttonsOf(message) {
-  const flow = message?.interactiveMessage?.nativeFlowMessage
-  return (flow?.buttons || []).map(button => ({
-    name: button.name,
-    params: JSON.parse(button.buttonParamsJson || '{}'),
-  }))
+/** Sin tarjeta HTML: estos tests miran sólo el mensaje del menú. */
+const noHtml = { config: { menu: { htmlEnabled: false } } }
+
+function wireKind(message) {
+  if (message?.templateMessage) return 'templateMessage'
+  if (message?.buttonsMessage) return 'buttonsMessage'
+  if (message?.interactiveMessage?.carouselMessage) return 'carouselMessage'
+  if (message?.interactiveMessage) return 'interactiveMessage'
+  return Object.keys(message || {})[0]
 }
 
-test('deliverMenu envía banner + caption nuestro + los 3 botones quick_reply', async () => {
-  const ctx = menuContext()
+function wireButtons(message) {
+  const parse = json => JSON.parse(json || '{}')
+  const template = message?.templateMessage?.hydratedFourRowTemplate
+  if (template) {
+    return template.hydratedButtons.map(button => ({
+      text: button.quickReplyButton?.displayText,
+      id: button.quickReplyButton?.id,
+    }))
+  }
+  const legacy = message?.buttonsMessage
+  if (legacy) {
+    return legacy.buttons.map(button => ({ text: button.buttonText?.displayText, id: button.buttonId }))
+  }
+  const carousel = message?.interactiveMessage?.carouselMessage
+  if (carousel) {
+    return carousel.cards.map(card => {
+      const params = parse(card.nativeFlowMessage.buttons[0].buttonParamsJson)
+      return { text: params.display_text, id: params.id }
+    })
+  }
+  const flow = message?.interactiveMessage?.nativeFlowMessage
+  if (flow) {
+    return flow.buttons.map(button => {
+      const params = parse(button.buttonParamsJson)
+      return { text: params.display_text, id: params.id, name: button.name }
+    })
+  }
+  return []
+}
+
+function wireBanner(message) {
+  return Boolean(
+    message?.templateMessage?.hydratedFourRowTemplate?.imageMessage
+    || message?.buttonsMessage?.imageMessage
+    || message?.interactiveMessage?.header?.imageMessage
+    || message?.interactiveMessage?.carouselMessage?.cards?.[0]?.header?.imageMessage,
+  )
+}
+
+/** Sólo etiqueta e id: `name` existe únicamente en native flow. */
+const labelsOf = message => wireButtons(message).map(({ text, id }) => ({ text, id }))
+
+const OUR_BUTTONS = [
+  { text: 'Menu', id: 'menu_full' },
+  { text: 'Fast command', id: 'menu_fast' },
+  { text: 'Support', id: 'menu_support' },
+]
+
+test('el menú usa por defecto botones separados (templateMessage hidratada)', async () => {
+  const ctx = menuContext(noHtml)
+  assert.equal(ctx.config.menu.buttonStyle, 'template', 'el estilo por defecto es template')
   await deliverMenu(ctx)
   assert.equal(ctx.sock.sent.length, 1)
   const message = ctx.sock.sent[0].message
-  assert.ok(message.interactiveMessage, 'debe ser un interactiveMessage')
-  assert.ok(message.interactiveMessage.header?.imageMessage, 'debe llevar el banner en el header')
-  assert.match(message.interactiveMessage.body.text, /\*Satoru gojo\*/)
-  assert.match(message.interactiveMessage.body.text, /¡Buenos días! ☀️ Lyann/)
-  assert.match(message.interactiveMessage.body.text, /Selecciona el menu que necesites/)
-  assert.match(message.interactiveMessage.body.text, /```Ⓒ Satoru gojo```/)
-  assert.equal(message.interactiveMessage.footer.text, 'Ⓒ Satoru gojo')
+  assert.equal(wireKind(message), 'templateMessage')
+  const template = message.templateMessage.hydratedFourRowTemplate
+  assert.deepEqual(labelsOf(message), OUR_BUTTONS, 'los 3 botones van separados, uno por entrada')
+  assert.ok(template.hydratedButtons.every(button => button.quickReplyButton), 'son quickReplyButton')
+  assert.ok(wireBanner(message), 'la plantilla lleva el banner')
+  assert.match(template.hydratedContentText, /\*Satoru gojo\*/)
+  assert.match(template.hydratedContentText, /¡Buenos días! ☀️ Lyann/)
+  assert.match(template.hydratedContentText, /Selecciona el menu que necesites/)
+  assert.equal(template.hydratedFooterText, 'Ⓒ Satoru gojo')
+})
 
-  const buttons = buttonsOf(message)
-  assert.deepEqual(buttons.map(button => button.params.display_text), ['Menu', 'Fast command', 'Support'])
-  assert.deepEqual(buttons.map(button => button.params.id), ['menu_full', 'menu_fast', 'menu_support'])
-  assert.ok(buttons.every(button => button.name === 'quick_reply'))
+test('cada tipo de botones del menú genera su mensaje y conserva los 3 botones', async () => {
+  const expected = {
+    native: 'interactiveMessage',
+    template: 'templateMessage',
+    buttons: 'buttonsMessage',
+    sheet: 'interactiveMessage',
+    carousel: 'carouselMessage',
+  }
+  for (const style of BUTTON_STYLES) {
+    const ctx = menuContext({ config: { menu: { buttonStyle: style, htmlEnabled: false } } })
+    await deliverMenu(ctx)
+    const message = ctx.sock.sent[0].message
+    assert.equal(wireKind(message), expected[style], `estilo ${style}`)
+    assert.deepEqual(labelsOf(message), OUR_BUTTONS, `estilo ${style}: botones`)
+    assert.ok(wireBanner(message), `estilo ${style}: banner`)
+    if (style === 'sheet') {
+      const params = JSON.parse(message.interactiveMessage.nativeFlowMessage.messageParamsJson)
+      assert.ok(params.bottom_sheet, 'sheet envuelve los botones en una hoja inferior')
+      assert.deepEqual(params.bottom_sheet.divider_indices, [0, 1, 2], 'cada opción va separada por un divisor')
+      assert.equal(params.bottom_sheet.button_title, '☾ Selecciona una opción')
+    }
+    if (style === 'carousel') {
+      assert.equal(message.interactiveMessage.carouselMessage.cards.length, 3, 'una tarjeta por botón')
+    }
+    if (style === 'native') {
+      assert.ok(wireButtons(message).every(button => button.name === 'quick_reply'))
+    }
+  }
+})
+
+test('un estilo desconocido cae a native en vez de romper el menú', async () => {
+  const ctx = menuContext(noHtml)
+  ctx.config.menu.buttonStyle = 'invento'
+  await deliverMenu(ctx)
+  assert.equal(wireKind(ctx.sock.sent[0].message), 'interactiveMessage')
+  assert.deepEqual(labelsOf(ctx.sock.sent[0].message), OUR_BUTTONS)
 })
 
 test('si el menú interactivo falla, cae al banner + texto con los 3 comandos', async () => {
-  const ctx = menuContext()
+  const ctx = menuContext(noHtml)
   ctx.sock.relayMessage = async () => { throw new Error('interactive no soportado') }
   await deliverMenu(ctx)
   assert.equal(ctx.messages.length, 2, 'banner + menú de texto')
@@ -127,7 +215,7 @@ test('si el menú interactivo falla, cae al banner + texto con los 3 comandos', 
 })
 
 test('si además falla el banner, envía un único mensaje de texto completo', async () => {
-  const ctx = menuContext({ config: { banner: './assets/no-existe.jpg' } })
+  const ctx = menuContext({ config: { banner: './assets/no-existe.jpg', menu: { htmlEnabled: false } } })
   ctx.sock.relayMessage = async () => { throw new Error('interactive no soportado') }
   await deliverMenu(ctx)
   assert.equal(ctx.messages.length, 1)
@@ -136,18 +224,19 @@ test('si además falla el banner, envía un único mensaje de texto completo', a
 })
 
 test('menuMode text no intenta botones y menuMode list conserva las categorías', async () => {
-  const text = menuContext({ config: { menuMode: 'text' } })
+  const text = menuContext({ config: { menuMode: 'text', menu: { htmlEnabled: false } } })
   await deliverMenu(text)
   assert.equal(text.sock.sent.length, 0, 'en modo texto no se hace relayMessage')
   assert.equal(text.messages.length, 2)
 
-  const list = menuContext({ config: { menuMode: 'list' } })
+  const list = menuContext({ config: { menuMode: 'list', menu: { htmlEnabled: false } } })
   await deliverMenu(list)
   assert.equal(list.sock.sent.length, 1)
-  const buttons = buttonsOf(list.sock.sent[0].message)
+  const buttons = wireButtons(list.sock.sent[0].message)
   assert.equal(buttons.length, 1)
   assert.equal(buttons[0].name, 'single_select')
-  const rows = buttons[0].params.sections.flatMap(section => section.rows)
+  const rows = JSON.parse(list.sock.sent[0].message.interactiveMessage.nativeFlowMessage.buttons[0].buttonParamsJson)
+    .sections.flatMap(section => section.rows)
   assert.ok(rows.length >= 18)
   assert.ok(rows.every(row => row.id.startsWith('vlrs_menu_')))
 })

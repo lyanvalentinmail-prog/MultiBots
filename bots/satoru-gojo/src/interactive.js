@@ -1,13 +1,17 @@
 import { readFile } from 'node:fs/promises'
+import { menuHtmlFileName, renderMenuHtml } from './html.js'
 import { isHttpUrl } from './utils/format.js'
 import { resolveBot } from './utils/paths.js'
 import {
+  BUTTON_STYLES,
   buildCommandsText,
   buildFullMenu,
   buildMenuHeader,
   buildMenuSections,
   menuCopyright,
 } from './menu.js'
+
+export { BUTTON_STYLES, BUTTON_STYLE_HINTS } from './menu.js'
 
 let liaPromise
 
@@ -48,8 +52,68 @@ export async function bannerMedia(banner) {
   return { image: await readFile(file), mimetype: 'image/jpeg' }
 }
 
+/* ------------------------------------------------------------------ *
+ * Tipos de botones del menú
+ * ------------------------------------------------------------------ *
+ * WhatsApp no dibuja igual cada tipo: por eso el estilo es configurable
+ * (config.json -> menu.buttonStyle) y se puede probar con .menustyle.
+ */
+
 function menuButtons(config) {
   return (config.menu?.buttons || []).map(button => ({ text: button.label, id: button.id }))
+}
+
+/**
+ * Arma el contenido según el estilo pedido. `media` trae el banner ya leído;
+ * si no hay banner (falló la lectura) los estilos que lo exigen caen a native.
+ */
+export function buildMenuContent(ctx, style, caption, media) {
+  const { config, m } = ctx
+  const buttons = menuButtons(config)
+  const base = {
+    ...media,
+    ...(media.image ? { caption } : { text: caption }),
+    footer: config.footer,
+    contextInfo: { mentionedJid: [m.sender] },
+  }
+
+  switch (style) {
+    case 'template':
+      // hydratedFourRowTemplate: título, contenido, pie y botones separados
+      return { ...base, title: config.menu?.title, templateButtons: buttons }
+
+    case 'buttons':
+      // buttonsMessage clásico con cabecera de imagen
+      return { ...base, buttons }
+
+    case 'sheet':
+      // native flow envuelto en una hoja inferior con divisores entre opciones
+      return {
+        ...base,
+        optionText: config.menu?.optionsText || '☾ Selecciona una opción',
+        optionTitle: config.menu?.selectMenu || config.menu?.title,
+        nativeFlow: buttons,
+      }
+
+    case 'carousel': {
+      if (!media.image) return { ...base, nativeFlow: buttons }
+      return {
+        text: caption,
+        footer: config.footer,
+        contextInfo: base.contextInfo,
+        cards: buttons.map((button, index) => ({
+          image: media.image,
+          mimetype: media.mimetype,
+          caption: index === 0 ? caption : (config.menu?.selectMenu || ''),
+          footer: config.footer,
+          nativeFlow: [button],
+        })),
+      }
+    }
+
+    default:
+      return { ...base, nativeFlow: buttons }
+  }
 }
 
 /**
@@ -60,13 +124,9 @@ async function sendOurMenu(ctx, withBanner = true) {
   const { sock, m, config } = ctx
   const caption = buildMenuHeader(ctx)
   const media = withBanner ? await bannerMedia(config.banner) : {}
-  return sendViaLia(sock, m.chat, {
-    ...media,
-    ...(withBanner ? { caption } : { text: caption }),
-    footer: config.footer,
-    nativeFlow: menuButtons(config),
-    contextInfo: { mentionedJid: [m.sender] },
-  }, { quoted: m.raw })
+  const style = BUTTON_STYLES.includes(config.menu?.buttonStyle) ? config.menu.buttonStyle : 'native'
+  const content = buildMenuContent(ctx, style, caption, media)
+  return sendViaLia(sock, m.chat, content, { quoted: m.raw })
 }
 
 /** Menú de texto equivalente: siempre funciona aunque WhatsApp no muestre botones. */
@@ -97,6 +157,35 @@ async function sendTextMenu(ctx) {
   return sock.sendMessage(m.chat, { text: buildButtonTextMenu(ctx) }, { quoted: m.raw })
 }
 
+/* --- Tarjeta HTML del menú ---------------------------------------- */
+
+/**
+ * Envía el menú como documento HTML (assets/menu.html relleno): la tarjeta con
+ * el banner incrustado y los tres botones separados, para abrir en el navegador.
+ */
+export async function sendMenuHtml(ctx) {
+  const html = await renderMenuHtml(ctx)
+  return ctx.sock.sendMessage(ctx.m.chat, {
+    document: Buffer.from(html, 'utf8'),
+    mimetype: 'text/html',
+    fileName: menuHtmlFileName(ctx),
+    caption: `☾ ${ctx.config.menu?.title || ctx.config.botName} — menú en HTML`,
+    contextInfo: { mentionedJid: [ctx.m.sender] },
+  }, { quoted: ctx.m.raw })
+}
+
+async function maybeSendMenuHtml(ctx) {
+  const menu = ctx.config.menu || {}
+  // En modo lista el menú es el de categorías del motor original: no se mezcla.
+  if (menu.htmlEnabled === false || ctx.config.menuMode === 'list') return null
+  try {
+    return await sendMenuHtml(ctx)
+  } catch (error) {
+    console.warn(`⚠ No se pudo enviar el menú HTML: ${error.message}`)
+    return null
+  }
+}
+
 /* --- Lista de categorías (menuMode: 'list'), se conserva del motor original --- */
 
 async function sendCategoryList(ctx, native) {
@@ -119,7 +208,7 @@ async function sendCategoryList(ctx, native) {
   }, { quoted: ctx.m.raw })
 }
 
-export async function deliverMenu(ctx) {
+async function deliverMenuMessage(ctx) {
   const mode = ctx.config.menuMode
 
   if (mode === 'list') {
@@ -150,6 +239,12 @@ export async function deliverMenu(ctx) {
   }
 
   return sendTextMenu(ctx)
+}
+
+export async function deliverMenu(ctx) {
+  const delivered = await deliverMenuMessage(ctx)
+  await maybeSendMenuHtml(ctx)
+  return delivered
 }
 
 /** Menú completo en texto (`.menufull`). */

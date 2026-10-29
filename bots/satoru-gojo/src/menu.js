@@ -1,5 +1,20 @@
 import { cleanNumber, formatUptime, memoryUsage, normalizeCommand } from './utils/format.js'
 
+/**
+ * Tipos de botones que acepta el menú. WhatsApp no los dibuja igual, así que
+ * el estilo es configurable (config.json -> menu.buttonStyle) y se puede
+ * probar en vivo con `.menustyle`.
+ */
+export const BUTTON_STYLES = ['native', 'template', 'buttons', 'sheet', 'carousel']
+
+export const BUTTON_STYLE_HINTS = {
+  native: 'chips de native flow, los 3 en una fila pegados al mensaje',
+  template: 'plantilla hidratada (templateMessage): botones separados, uno por fila',
+  buttons: 'botones clásicos (buttonsMessage): separados, hasta 3',
+  sheet: 'un botón que abre una hoja con las 3 opciones separadas por divisores',
+  carousel: 'una tarjeta por botón, cada una con su banner',
+}
+
 export const MENU_ROW_PREFIX = 'vlrs_menu_'
 
 export const CATEGORIES = {
@@ -32,12 +47,15 @@ const reactions = [
 
 export const MENU_LAYOUT = [
   ['general', [
-    'estadoapi', 'id', 'infobot', item('menu', 'menu <categoría>'), 'menufull', 'fastcommand', 'support', 'owner', 'ping',
+    'estadoapi', 'id', 'infobot', item('menu', 'menu <categoría>'), item('menu', 'menu html'), 'menufull',
+    'fastcommand', 'support', 'menuhtml', 'owner', 'ping',
   ]],
   ['owners', [
     item('mod', 'mod @usuario / número'), item('mod', 'mod del @usuario'), item('mod', 'mod lista'),
     'delsession', item('join', 'join <link>'), item('bot', 'bot on', { owner: true }),
     item('bot', 'bot off', { owner: true }), item('setlen', 'setlen es/in/pt'), item('setmenu', 'setmenu lista/texto'),
+    item('menustyle', 'menustyle native/template/buttons/sheet/carousel', { owner: true }),
+    item('setmenuhtml', 'setmenuhtml on/off', { owner: true }),
   ]],
   ['admins', [
     item('ban', 'ban @usuario / responder'), item('sban', 'sban → sticker ban (responder sticker)'),
