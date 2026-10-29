@@ -58,12 +58,43 @@ _"En el mundo y el jujutsu, él es el más fuerte."_`
       pattern: 'menu',
       desc: 'Muestra el menú principal',
       fast: false,
+      noPrefix: true, // funciona escribiendo "menu" a secas
       // El handler real se asigna por message-handler porque necesita sendMainMenu con el userName
       // Este placeholder asegura que el comando aparezca listado; la lógica real se intercepta en message-handler.
       handler: async (sock, jid, args, msg) => {
         const { sendMainMenu } = require('../message-handler');
         const userName = msg.pushName || 'Usuario';
         await sendMainMenu(sock, jid, userName);
+      }
+    },
+    {
+      // Los tres "botones" del menú también como comando: si WhatsApp no
+      // muestra botones interactivos, el menú de texto usa estos.
+      pattern: 'menufull',
+      desc: 'Lista completa de comandos',
+      fast: true,
+      handler: async (sock, jid) => {
+        const { buildFullMenuText } = require('../message-handler');
+        await sock.sendMessage(jid, { text: buildFullMenuText() });
+      }
+    },
+    {
+      pattern: 'fastcommand',
+      desc: 'Comandos rápidos',
+      fast: true,
+      handler: async (sock, jid) => {
+        const { buildFastCommandText } = require('../message-handler');
+        await sock.sendMessage(jid, { text: buildFastCommandText() });
+      }
+    },
+    {
+      pattern: 'support',
+      desc: 'Número de soporte',
+      fast: false,
+      handler: async (sock, jid) => {
+        await sock.sendMessage(jid, {
+          text: `${config.messages.supportText}\n\nhttps://wa.me/${config.ownerNumber}`
+        });
       }
     },
     {

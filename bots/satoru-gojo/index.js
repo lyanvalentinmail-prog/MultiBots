@@ -245,6 +245,7 @@ let closing = false;
  * a preguntar el número con el readline ya cerrado y se quedaría colgado). */
 const authState = {
   resolved: false,        // ¿ya elegimos método?
+  announced: false,       // ¿ya anunciamos el método por consola?
   method: CLI.method,     // 'pairing' | 'qr' | null (sesión ya vinculada)
   phone: null,
   pairingRequested: false,
@@ -337,12 +338,17 @@ async function connect() {
     closeRl();
   }
 
-  if (authState.method === 'pairing') {
-    console.log(`🔢 Método: pairing code para +${authState.phone}`);
-  } else if (authState.method === 'qr') {
-    console.log('📷 Método: código QR');
+  // Anunciar el método una sola vez: si se repite en cada reconexión la
+  // consola de Termux se llena de ruido durante un corte de red.
+  if (!authState.announced) {
+    authState.announced = true;
+    if (authState.method === 'pairing') {
+      console.log(`🔢 Método: pairing code para +${authState.phone}`);
+    } else if (authState.method === 'qr') {
+      console.log('📷 Método: código QR');
+    }
+    console.log('⏳ Conectando con WhatsApp...\n');
   }
-  console.log('⏳ Conectando con WhatsApp...\n');
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const version = await resolveBaileysVersion();

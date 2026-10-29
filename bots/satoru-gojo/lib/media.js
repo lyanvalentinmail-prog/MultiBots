@@ -4,13 +4,17 @@ const axios = require('axios');
 const velirius = require('./velirius');
 
 async function downloadMsg(msg) {
-  const m = msg.message;
+  // Desenvolver ephemeral/viewOnce: en grupos los mensajes llegan envueltos y
+  // sin esto `.sticker` sobre una foto no encontraba ningún medio.
+  const { unwrapMessage } = require('./helpers');
+  const m = unwrapMessage(msg) || msg?.message;
   let type = null, content = null;
 
   if (m?.imageMessage) { type = 'image'; content = m.imageMessage; }
   else if (m?.videoMessage) { type = 'video'; content = m.videoMessage; }
   else if (m?.stickerMessage) { type = 'sticker'; content = m.stickerMessage; }
   else if (m?.audioMessage) { type = 'audio'; content = m.audioMessage; }
+  else if (m?.documentMessage) { type = 'document'; content = m.documentMessage; }
 
   const ctx = m?.extendedTextMessage?.contextInfo?.quotedMessage;
   if (ctx) {
@@ -18,13 +22,19 @@ async function downloadMsg(msg) {
     else if (ctx.videoMessage) { type = 'video'; content = ctx.videoMessage; }
     else if (ctx.stickerMessage) { type = 'sticker'; content = ctx.stickerMessage; }
     else if (ctx.audioMessage) { type = 'audio'; content = ctx.audioMessage; }
+    else if (ctx.documentMessage) { type = 'document'; content = ctx.documentMessage; }
   }
 
   if (!type || !content) return null;
-  const stream = await downloadContentFromMessage(content, type);
-  const chunks = [];
-  for await (const c of stream) chunks.push(c);
-  return Buffer.concat(chunks);
+  try {
+    const stream = await downloadContentFromMessage(content, type);
+    const chunks = [];
+    for await (const c of stream) chunks.push(c);
+    return Buffer.concat(chunks);
+  } catch (e) {
+    console.error('downloadMsg:', e?.message || e);
+    return null;
+  }
 }
 
 /**

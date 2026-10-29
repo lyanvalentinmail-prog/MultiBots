@@ -83,7 +83,7 @@ Salida esperada:
 ```
 
 ## Comandos del bot Satoru Gojo
-Envía `menu` (también válido `.menu`) en cualquier chat y el bot responderá:
+Envía `menu` (también válido `.menu`, `!menu`, `#menu`, `/menu`) en cualquier chat y el bot responderá:
 - 🖼️ Imagen de Satoru Gojo con el título **"Satoru gojo"**
 - Saludo: **¡Buenos días! ☀️ {usuario}**
 - Texto: **Selecciona el menu que necesites**
@@ -93,7 +93,32 @@ Envía `menu` (también válido `.menu`) en cualquier chat y el bot responderá:
   - **Fast command** → lista rápida de comandos frecuentes
   - **Support** → envía el número `59896719709` con enlace directo a WhatsApp
 
+Los botones se envían como `interactiveMessage` (native flow). WhatsApp los muestra de forma
+intermitente según la cuenta, así que si no llegan el bot envía **automáticamente** el mismo menú
+en texto con los tres comandos equivalentes, que funcionan siempre:
+
+| Botón | Comando equivalente |
+|---|---|
+| Menu | `.menufull` |
+| Fast command | `.fastcommand` |
+| Support | `.support` |
+
 Otros comandos rápidos: `.ping`, `.id`, `.infobot`, `.owner`.
+
+### Cómo se reconocen los comandos
+- Prefijos aceptados: `.`, `!`, `#`, `/` (el principal es `.`, configurable en `config.js`).
+- La coincidencia es por **palabra completa**: `sol` no dispara `.s`, ni `identidad` dispara `.id`.
+- Los mensajes **sin prefijo no disparan nada**, salvo los marcados con `noPrefix: true` (`menu`).
+- Los comandos también funcionan como **leyenda de una imagen o video** (`.sticker` sobre una foto),
+  y dentro de `ephemeralMessage` / `viewOnceMessage` (grupos con mensajes temporales).
+- Entre varios candidatos gana el patrón más largo (`bot on` antes que `bot`).
+
+### ¿Los comandos no responden?
+1. Envía `.ping` — si no responde, mira la consola de Termux: ahora cualquier error del handler se
+   registra **y** se le avisa al usuario en el chat (antes se tragaba en silencio).
+2. `npm run doctor` — estado de Node/Baileys/sesión.
+3. Si el bot está apagado (`.bot off`), sólo responde al owner hasta que haga `.bot on`.
+4. En grupos, los admins y el owner no son censurados por los *antis*.
 
 ## Estructura
 
@@ -137,9 +162,9 @@ MultiBots/
             └── menu.html    # Plantilla HTML de referencia del menú
 ```
 
-## Funcionalidades activas (189 comandos en 17 categorías)
+## Funcionalidades activas (192 comandos en 17 categorías)
 
-- ✅ **General**: ping, id, infobot, menu, owner, estadoapi
+- ✅ **General**: ping, id, infobot, menu, menufull, fastcommand, support, owner, estadoapi
 - ✅ **Owners**: mod, delsession, join, bot on/off, setlen, setmenu
 - ✅ **Admins de grupo**: ban, sban, warn/delwarn (3 strikes → ban), mute/delmute, open/close, fijar/desfijar, namegp, desgp, photogp, grupo on/off, soloadmin, welcome
 - ✅ **Antis**: antilink, antiimg, antiaudio, antivideo, antisticker, antispam, antibot, antidocs, antipalabras con lista personalizable + auto-eliminación + advertencia
@@ -167,6 +192,7 @@ Cada archivo en `bots/<bot>/commands/` exporta un objeto con:
 - `title`: título de la categoría (se muestra en el menú)
 - `commands`: array de objetos con:
   - `pattern`: nombre del comando (ej: `'hola <nombre>'`). Soporta comandos multi-palabra como `'bot on'`
+  - `noPrefix`: `true` para que funcione sin `.` (por defecto hace falta prefijo)
   - `desc`: descripción que aparece en el menú
   - `fast`: `true` para que aparezca en *Fast command*
   - `handler`: función async `(sock, jid, args, msg) => { ... }` con la lógica
