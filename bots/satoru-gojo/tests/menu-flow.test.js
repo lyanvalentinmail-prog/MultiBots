@@ -83,20 +83,35 @@ async function sendMenu(handler, sock, text = '.menu', id = 'A1') {
   })
 }
 
-test('.menu entrega por defecto botones separados (plantilla hidratada) con nuestro caption', async () => {
+test('.menu entrega por defecto los 3 botones en vertical (native flow) con nuestro caption', async () => {
   const { handler, sock, relayed } = buildHandler('interactive')
   await sendMenu(handler, sock)
   assert.equal(relayed.length, 1, 'debe retransmitir un único mensaje de menú')
   const message = relayed[0].message
+  const interactive = message?.interactiveMessage
+  assert.ok(interactive, 'por defecto el menú viaja como interactiveMessage: botones en vertical')
+  assert.ok(interactive.header?.imageMessage, 'debe llevar la tarjeta')
+  assert.match(interactive.body.text, /\*Satoru gojo\*/)
+  assert.match(interactive.body.text, /¡Buenos días! ☀️ Lyann/)
+  assert.match(interactive.body.text, /Selecciona el menu que necesites/)
+  assert.match(interactive.body.text, /```Ⓒ Satoru gojo```/)
+  assert.match(interactive.footer?.text || '', /Ⓒ Satoru gojo/)
+  // Tres botones quick_reply, cada uno en su fila: separados, no pegados
+  const buttons = quickReplies(message)
+  assert.deepEqual(buttons.map(button => button.params.display_text), ['Menu', 'Fast command', 'Support'])
+  assert.deepEqual(buttons.map(button => button.params.id), ['menu_full', 'menu_fast', 'menu_support'])
+  assert.ok(buttons.every(button => button.name === 'quick_reply'))
+})
+
+test('con buttonStyle template el menú vuelve a la plantilla hidratada', async () => {
+  const { handler, sock, relayed } = buildHandler('interactive', { buttonStyle: 'template' })
+  await sendMenu(handler, sock)
+  const message = relayed[0].message
   const template = templateOf(message)
-  assert.ok(template, 'por defecto el menú viaja como templateMessage')
+  assert.ok(template, 'con template el menú viaja como templateMessage')
   assert.ok(template.imageMessage, 'debe llevar el banner')
-  assert.match(template.hydratedContentText, /\*Satoru gojo\*/)
-  assert.match(template.hydratedContentText, /¡Buenos días! ☀️ Lyann/)
   assert.match(template.hydratedContentText, /Selecciona el menu que necesites/)
-  assert.match(template.hydratedContentText, /```Ⓒ Satoru gojo```/)
   assert.equal(template.hydratedFooterText, 'Ⓒ Satoru gojo')
-  // Tres botones independientes, cada uno en su entrada de la plantilla
   assert.deepEqual(templateButtons(message).map(button => button.displayText), ['Menu', 'Fast command', 'Support'])
   assert.deepEqual(templateButtons(message).map(button => button.id), ['menu_full', 'menu_fast', 'menu_support'])
 })
@@ -120,7 +135,7 @@ test('con menu.htmlEnabled en true, el menú vuelve a adjuntar el archivo HTML',
   assert.equal(html.content.mimetype, 'text/html')
   assert.equal(html.content.fileName, 'satoru-gojo-menu.html')
   const document = html.content.document.toString('utf8')
-  assert.match(document, /<h1>Satoru gojo<\/h1>/)
+  assert.match(document, /<h1>Satoru gojo \d+\.\d+\.\d+<\/h1>/)
   assert.match(document, /data:image\/jpeg;base64,/, 'el banner va incrustado')
   assert.equal((document.match(/class="btn/g) || []).length, 3, 'los 3 botones separados')
   assert.match(document, /href="https:\/\/wa\.me\/59896719709"/, 'Support enlaza al propietario')
@@ -215,13 +230,13 @@ test('.menustyle sin argumento lista los tipos disponibles', async () => {
   for (const style of ['native', 'template', 'buttons', 'sheet', 'carousel']) {
     assert.match(text, new RegExp(`\\*${style}\\*`), `falta ${style} en la lista`)
   }
-  assert.match(text, /template\* _\(actual\)_/)
+  assert.match(text, /native\* _\(actual\)_/)
 })
 
 test('.menustyle rechaza un estilo inexistente', async () => {
   const { handler, sock, sent, configStore } = buildHandler('interactive')
   await sendMenu(handler, sock, '.menustyle invento', 'S3')
-  assert.equal(configStore.data.menu.buttonStyle, 'template', 'no debe cambiar nada')
+  assert.equal(configStore.data.menu.buttonStyle, 'native', 'no debe cambiar nada')
   assert.match(sent.map(item => textOf(item.content)).join('\n'), /Tipos de botones del menú/)
 })
 

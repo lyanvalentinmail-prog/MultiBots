@@ -39,8 +39,13 @@ export const DEFAULT_CONFIG = {
     cardEnabled: true,
     cardFont: './assets/fonts/DejaVuSans.ttf',
     htmlTemplate: './assets/menu.html',
+    // Ficha CLIMA de la tarjeta (open-meteo, sin clave; si falla dice "Sin datos")
+    weatherEnabled: true,
+    weatherLat: -34.9,
+    weatherLon: -54.95,
     // Tipo de botones: native | template | buttons | sheet | carousel
-    buttonStyle: 'template',
+    // native = native flow: los 3 en vertical, separados uno por fila
+    buttonStyle: 'native',
     optionsText: '☾ Selecciona una opción',
   },
   api: {
@@ -139,6 +144,10 @@ export function normalizeConfig(input = {}) {
   config.menu.htmlTemplate = String(config.menu.htmlTemplate || defaults.menu.htmlTemplate).trim().slice(0, 200)
   config.menu.cardEnabled = config.menu.cardEnabled !== false
   config.menu.cardFont = String(config.menu.cardFont || defaults.menu.cardFont).trim().slice(0, 200)
+  config.menu.weatherEnabled = config.menu.weatherEnabled !== false
+  const coordinate = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
+  config.menu.weatherLat = coordinate(config.menu.weatherLat, defaults.menu.weatherLat)
+  config.menu.weatherLon = coordinate(config.menu.weatherLon, defaults.menu.weatherLon)
   if (!BUTTON_STYLES.includes(config.menu.buttonStyle)) {
     throw new Error(`menu.buttonStyle debe ser uno de: ${BUTTON_STYLES.join(', ')}`)
   }

@@ -146,20 +146,32 @@ const OUR_BUTTONS = [
   { text: 'Support', id: 'menu_support' },
 ]
 
-test('el menú usa por defecto botones separados (templateMessage hidratada)', async () => {
+test('el menú usa por defecto los 3 botones en vertical (native flow), separados', async () => {
   const ctx = menuContext(noHtml)
-  assert.equal(ctx.config.menu.buttonStyle, 'template', 'el estilo por defecto es template')
+  assert.equal(ctx.config.menu.buttonStyle, 'native', 'el estilo por defecto es native')
   await deliverMenu(ctx)
   assert.equal(ctx.sock.sent.length, 1)
   const message = ctx.sock.sent[0].message
+  assert.equal(wireKind(message), 'interactiveMessage')
+  const flow = message.interactiveMessage?.nativeFlowMessage
+  assert.ok(flow, 'native flow: una fila por botón, en vertical y separadas')
+  assert.ok(wireButtons(message).every(button => button.name === 'quick_reply'), 'son quick_reply')
+  assert.deepEqual(labelsOf(message), OUR_BUTTONS, 'los 3 botones, uno por fila')
+  assert.ok(wireBanner(message), 'la cabecera lleva la tarjeta')
+  assert.match(message.interactiveMessage.body.text, /\*Satoru gojo\*/)
+  assert.match(message.interactiveMessage.body.text, /¡Buenos días! ☀️ Lyann/)
+  assert.match(message.interactiveMessage.body.text, /Selecciona el menu que necesites/)
+})
+
+test('con buttonStyle template vuelve la plantilla hidratada con sus chips', async () => {
+  const ctx = menuContext({ config: { menu: { buttonStyle: 'template', htmlEnabled: false } } })
+  await deliverMenu(ctx)
+  const message = ctx.sock.sent[0].message
   assert.equal(wireKind(message), 'templateMessage')
   const template = message.templateMessage.hydratedFourRowTemplate
-  assert.deepEqual(labelsOf(message), OUR_BUTTONS, 'los 3 botones van separados, uno por entrada')
+  assert.deepEqual(labelsOf(message), OUR_BUTTONS, 'los 3 botones de siempre')
   assert.ok(template.hydratedButtons.every(button => button.quickReplyButton), 'son quickReplyButton')
   assert.ok(wireBanner(message), 'la plantilla lleva el banner')
-  assert.match(template.hydratedContentText, /\*Satoru gojo\*/)
-  assert.match(template.hydratedContentText, /¡Buenos días! ☀️ Lyann/)
-  assert.match(template.hydratedContentText, /Selecciona el menu que necesites/)
   assert.equal(template.hydratedFooterText, 'Ⓒ Satoru gojo')
 })
 

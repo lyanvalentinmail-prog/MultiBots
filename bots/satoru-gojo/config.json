@@ -45,8 +45,11 @@
     "htmlTemplate": "./assets/menu.html",
     "cardEnabled": true,
     "cardFont": "./assets/fonts/DejaVuSans.ttf",
-    "buttonStyle": "template",
-    "optionsText": "☾ Selecciona una opción"
+    "buttonStyle": "native",
+    "optionsText": "☾ Selecciona una opción",
+    "weatherEnabled": true,
+    "weatherLat": -34.9,
+    "weatherLon": -54.95
   },
   "api": {
     "baseUrl": "https://velirius-api-sd8u.vercel.app",

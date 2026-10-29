@@ -62,7 +62,7 @@ La sesión queda en `bots/<bot>/sessions/`. Para volver a vincular: `.delsession
 npm run setup      # asistente interactivo para config.json
 npm run check      # sintaxis + config válida + banner + plugins (alias: npm run doctor)
 npm run fix:sharp  # reintenta preparar sharp
-npm test           # 111 tests (node --test)
+npm test           # 115 tests (node --test)
 ```
 
 `config.json` se **recarga solo** al editarlo, con el bot en marcha.
@@ -90,29 +90,30 @@ WhatsApp no dibuja igual cada tipo de botón, así que el estilo es configurable
 
 | Tipo | Mensaje que viaja | Cómo se ve |
 |---|---|---|
-| **`template`** _(por defecto)_ | `templateMessage` (plantilla hidratada) | Los 3 botones **separados**, cada uno en su fila |
-| `native` | `interactiveMessage` (native flow `quick_reply`) | Los 3 chips en una fila, pegados al mensaje |
-| `buttons` | `buttonsMessage` clásico | Botones separados, hasta 3 |
+| **`native`** _(por defecto)_ | `interactiveMessage` (native flow `quick_reply`) | Los 3 botones **en vertical, separados**: una fila por botón |
+| `template` | `templateMessage` (plantilla hidratada) | Los 3 chips horizontales, pegados al mensaje |
+| `buttons` | `buttonsMessage` clásico | Fila horizontal, hasta 3 botones |
 | `sheet` | `interactiveMessage` con `bottom_sheet` | Un botón que abre una hoja con las 3 opciones separadas por divisores |
 | `carousel` | `interactiveMessage` con `carouselMessage` | Una tarjeta por botón, cada una con su banner |
 
-> `template` y `buttons` son los formatos clásicos: se ven en WhatsApp Web/Escritorio e iOS y en canales, pero **algunos clientes Android los ignoran**. Si en tu teléfono no aparecen, prueba `.menustyle native` (o `sheet`) y se guarda solo.
+> `native` es el formato que dibuja el WhatsApp actual (Android, iOS y Web): los botones van **en vertical, uno por fila, separados**. `template` y `buttons` son los formatos clásicos de chips horizontales pegados al mensaje: se ven en WhatsApp Web/Escritorio e iOS y en canales, pero **algunos clientes Android los ignoran**. Si algo no aparece en tu teléfono, prueba `.menustyle sheet` y se guarda solo.
 
 Pulsar cualquier botón responde igual sea cual sea el estilo: el handler lee `templateButtonReplyMessage`, `buttonsResponseMessage`, `listResponseMessage` e `interactiveResponseMessage`. Si el envío falla, el bot manda **automáticamente** el banner más un menú de texto con los tres comandos, que funcionan siempre.
 
 ### La tarjeta aparece con el menú (sin mandar archivos)
 
-Cada `.menu` se ve en el chat como una **tarjeta-imagen** compuesta en el propio bot (`src/utils/card.js`): el banner arriba, fundido con el cuerpo oscuro, y debajo el título, el saludo con tu nombre, *Selecciona el menu que necesites*, el conteo de comandos, el copyright y **los tres botones separados, uno por fila** (con su comando al lado, y Support con su enlace). Los botones reales de WhatsApp van debajo, pulsables.
+Cada `.menu` se ve en el chat como una **tarjeta-imagen** compuesta en el propio bot (`src/utils/card.js`) con el diseño del HTML del Drive: el banner arriba y debajo el nombre con su versión, el saludo con tu nombre, y las fichas **ESTADO**, **MODO**, **COMANDOS TOTALES** y **TIEMPO DE ACTIVIDAD**, la ficha **CLIMA** (open-meteo, sin clave; si no hay red dice *Sin datos*), la fila verde con la **HORA** y la fecha, el aviso *Escribe `.menu <categoría>` para ver las funciones* y **los tres botones en vertical, separados uno por fila** (con su comando al lado, y Support con su enlace). Los botones reales de WhatsApp van debajo, pulsables y también en vertical.
 
 - No se envía ningún archivo: la tarjeta *es* la imagen del mensaje. Si no se puede componer (falta la fuente, falla sharp), el menú usa el banner de siempre y nada se rompe.
 - `menu.cardEnabled: false` vuelve al banner original; `menu.cardFont` cambia la fuente.
+- `menu.weatherEnabled: false` quita la ficha CLIMA (y no toca la red); `menu.weatherLat` / `menu.weatherLon` fijan de dónde se lee el clima.
 - Detalle de Termux: el sharp de WebAssembly usa resvg, que **no carga fuentes**, así que `<text>` saldría en blanco. Por eso cada texto se convierte en trayectorias `<path>` con `opentype.js` y la DejaVu Sans que vive en `assets/fonts/`: se ve igual en nativo y en wasm. Los glifos que la fuente no tiene (emoji, CJK…) se descartan sólo en la imagen; en el texto del mensaje siguen intactos.
 
 El HTML (`assets/menu.html`) queda como versión para navegador, **sólo si la pedís**:
 
 - `.menuhtml` (o `.menu html`) la envía como documento.
 - `.setmenuhtml on|off` (owner) hace que vuelva a adjuntarse con cada menú; también `config.json → menu.htmlEnabled`.
-- `menu.htmlTemplate` permite usar otra plantilla. Se rellenan los marcadores `{title}`, `{botName}`, `{greeting}`, `{usuario}`, `{selectMenu}`, `{copyright}`, `{stats}`, `{banner}`, `{buttons}` y `{year}`; todo lo que venga del usuario se escapa.
+- `menu.htmlTemplate` permite usar otra plantilla. Se rellenan los marcadores `{title}`, `{version}`, `{botName}`, `{greeting}`, `{usuario}`, `{selectMenu}`, `{copyright}`, `{stats}`, `{banner}`, `{buttons}`, `{estado}`, `{modo}`, `{comandos}`, `{actividad}`, `{clima}`, `{hora}`, `{fecha}`, `{prefix}` y `{year}`; todo lo que venga del usuario se escapa.
 
 Todo el texto del menú es configurable en `config.json → menu`.
 
@@ -196,7 +197,7 @@ MultiBots/
         │   ├── moderation.js    # Motor de antis (antilink, antispam, antidelete…)
         │   ├── subbots.js       # Gestor de sub-bots con sesiones propias
         │   ├── api.js           # Cliente de Velirius API (fetch, timeouts, límites)
-        │   └── utils/           # card (🔶 tarjeta del menú), format, jid, media,
+        │   └── utils/           # card (🔶 tarjeta del menú), weather (🔶 clima), format, jid, media,
         │                        # messages, sticker, canvas, characters, chat,
         │                        # economy, gif, group, paths, welcome
         ├── scripts/
@@ -206,7 +207,7 @@ MultiBots/
         │   └── install-termux.sh
         ├── sessions/            # credenciales (gitignored)
         ├── data/                # database.json (gitignored)
-        └── tests/               # 22 suites, 111 tests (node --test)
+        └── tests/               # 22 suites, 115 tests (node --test)
 ```
 
 🔶 = archivos donde vive **nuestro** menú; el resto del motor es el original.
@@ -256,8 +257,9 @@ El loader valida que exista `execute()` y `commands`, y **falla si un alias est�
 | `owners`, `ownerLids`, `mods` | Números con permisos |
 | `banner` | Ruta o URL de la imagen del menú |
 | `menu` | `title`, `greeting`, `selectMenu`, `copyright`, `supportText`, `buttons` |
-| `menu.buttonStyle` | `template` (botones separados, por defecto), `native`, `buttons`, `sheet` o `carousel` — se prueba con `.menustyle` |
+| `menu.buttonStyle` | `native` (botones en vertical separados, por defecto), `template`, `buttons`, `sheet` o `carousel` — se prueba con `.menustyle` |
 | `menu.cardEnabled`, `menu.cardFont` | Tarjeta-imagen que aparece con el menú y su fuente (`assets/fonts/`) |
+| `menu.weatherEnabled`, `menu.weatherLat`, `menu.weatherLon` | Ficha CLIMA de la tarjeta: open-meteo sin clave, cacheado 10 min |
 | `menu.htmlEnabled`, `menu.htmlTemplate` | HTML para navegador: por defecto no se envía (`.menuhtml` lo pide) — `.setmenuhtml on|off` |
 | `menu.optionsText` | Título del botón cuando `buttonStyle` es `sheet` |
 | `menuMode` | `interactive` (nuestro menú con botones), `list` o `text` |
@@ -284,15 +286,15 @@ Diagnóstico rápido:
 
 ```bash
 npm run check
-# ✔ Sintaxis correcta: 49 archivos
-# ✔ Configuración válida y banner disponible
+# ✔ Sintaxis correcta: 52 archivos
+# ✔ Configuración válida, banner, fuente y plantilla HTML disponibles
 # ✔ Plugins válidos: 225 comandos (412 alias)
 ```
 
 ## Tests
 
 ```bash
-npm test     # 111 tests en 22 suites
+npm test     # 115 tests en 22 suites
 ```
 
 Cubren el registro de plugins, el handler (permisos, cooldown, antis), el menú (nuestro diseño, botones, respaldos, filtros por rol), la API, economía, juegos, gacha, personajes, Pokémon, perfil, reacciones, stickers, canvas, sub-bots, moderación y configuración.
